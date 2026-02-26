@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/miclle/report/anthropic"
-	"github.com/miclle/report/github"
-	"github.com/miclle/report/report"
+	"github.com/miclle/gh-report/anthropic"
+	"github.com/miclle/gh-report/github"
+	"github.com/miclle/gh-report/report"
 )
 
 func main() {

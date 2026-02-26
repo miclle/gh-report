@@ -9,7 +9,7 @@ import (
 
 	gh "github.com/google/go-github/v69/github"
 
-	"github.com/miclle/report/github"
+	"github.com/miclle/gh-report/github"
 )
 
 // WorkItem 表示今日的一条工作活动。

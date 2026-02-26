@@ -1,4 +1,4 @@
-module github.com/miclle/report
+module github.com/miclle/gh-report
 
 go 1.25.5
 

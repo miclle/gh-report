@@ -10,7 +10,7 @@ import (
 
 	gh "github.com/google/go-github/v69/github"
 
-	"github.com/miclle/report/github"
+	"github.com/miclle/gh-report/github"
 )
 
 // RepoReport 保存单个仓库的所有收集数据。

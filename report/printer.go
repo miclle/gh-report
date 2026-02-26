@@ -11,7 +11,7 @@ import (
 
 	gh "github.com/google/go-github/v69/github"
 
-	"github.com/miclle/report/github"
+	"github.com/miclle/gh-report/github"
 )
 
 // Print 将完整的活动报告以 CSV 分段格式写入 writer。

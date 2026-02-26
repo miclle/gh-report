@@ -1,4 +1,4 @@
-# report
+# gh-report
 
 GitHub 仓库活动报告生成工具。通过 GitHub API 获取指定仓库（支持多个）的 Issue、Pull Request、评论、Review 以及 Projects v2 迭代信息，生成结构化的工作报告。支持 CSV 原始数据输出和 Summary 日报模式，并可通过 Claude API 直接生成"今日工作 + 明日计划"格式的日报。
 
@@ -27,14 +27,14 @@ GitHub 仓库活动报告生成工具。通过 GitHub API 获取指定仓库（�
 ## 安装
 
 ```bash
-go install github.com/miclle/report@latest
+go install github.com/miclle/gh-report@latest
 ```
 
 或从源码构建：
 
 ```bash
-git clone https://github.com/miclle/report.git
-cd report
+git clone https://github.com/miclle/gh-report.git
+cd gh-report
 make build
 ```
 
@@ -217,7 +217,7 @@ own/repo1,Sprint Board,Sprint 2026-W09,Current,98,deploy(frontend): 沙箱管理
 ## 项目结构
 
 ```
-report/
+gh-report/
 ├── main.go                 # CLI 入口，参数解析与执行
 ├── config.go               # YAML 配置文件加载
 ├── config.example.yaml     # 配置文件示例
