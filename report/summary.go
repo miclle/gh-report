@@ -247,7 +247,7 @@ func buildPromptTemplate(since, until time.Time, user string) string {
 - Issue 状态: open→进行中, closed→已关闭
 - 评论和 review 类型的活动描述参考格式: 参与 Issue #N / Review PR #N 讨论
 - 明日计划来自未完成的 PR 和当前迭代中未完成的工作项
-- 明日计划不要包含工作流状态（如 Testing、开发中、Todo、In Progress 等），只保留优先级标识（如 P0、P1）
+- 明日计划不要包含任何状态或优先级标识（如 Testing、开发中、Todo、P0、P1 等）
 
 以下是活动数据:
 `, dateRange, user)
