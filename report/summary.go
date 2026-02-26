@@ -67,6 +67,10 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 			if user != "" && issue.GetUser().GetLogin() != user {
 				continue
 			}
+			// 有 Assignees 但不包含当前用户时跳过（属于别人的任务）
+			if user != "" && len(issue.Assignees) > 0 && !hasAssignee(issue.Assignees, user) {
+				continue
+			}
 			items = append(items, WorkItem{
 				Type:   "issue",
 				Repo:   fullRepo,
