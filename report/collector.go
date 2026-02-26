@@ -180,10 +180,15 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 	}
 
 	// 按用户过滤 Pull Requests
+	// 仅保留在时间范围内有实际活动（创建、合并、关闭）或仍处于 open 状态的 PR
 	for _, pr := range rawPRs {
-		if user == "" || pr.GetUser().GetLogin() == user {
-			rr.PullRequests = append(rr.PullRequests, pr)
+		if user != "" && pr.GetUser().GetLogin() != user {
+			continue
 		}
+		if !prHasActivitySince(pr, since) {
+			continue
+		}
+		rr.PullRequests = append(rr.PullRequests, pr)
 	}
 
 	// 按用户过滤 Issue Comments
@@ -227,4 +232,23 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 	}
 
 	return rr, nil
+}
+
+// prHasActivitySince 判断 PR 在指定时间之后是否有实际活动。
+// 仅当 PR 在时间范围内创建、合并、关闭，或仍处于 open 状态时返回 true。
+// 避免因 GitHub 自动更新 UpdatedAt（如 bot 评论、标签变更）导致旧 PR 被误收录。
+func prHasActivitySince(pr *gh.PullRequest, since time.Time) bool {
+	if pr.GetState() == "open" {
+		return true
+	}
+	if !pr.GetCreatedAt().Before(since) {
+		return true
+	}
+	if pr.MergedAt != nil && !pr.MergedAt.Before(since) {
+		return true
+	}
+	if pr.ClosedAt != nil && !pr.ClosedAt.Before(since) {
+		return true
+	}
+	return false
 }
