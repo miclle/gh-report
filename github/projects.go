@@ -59,12 +59,14 @@ query($projectID: ID!, $cursor: String) {
               number
               url
               state
+              assignees(first: 10) { nodes { login } }
             }
             ... on PullRequest {
               title
               number
               url
               state
+              assignees(first: 10) { nodes { login } }
             }
           }
           type
@@ -135,10 +137,15 @@ type gqlIterationField struct {
 // gqlProjectItem 是项目工作项的 GraphQL 响应结构。
 type gqlProjectItem struct {
 	Content struct {
-		Title  string `json:"title"`
-		Number int    `json:"number"`
-		URL    string `json:"url"`
-		State  string `json:"state"`
+		Title     string `json:"title"`
+		Number    int    `json:"number"`
+		URL       string `json:"url"`
+		State     string `json:"state"`
+		Assignees struct {
+			Nodes []struct {
+				Login string `json:"login"`
+			} `json:"nodes"`
+		} `json:"assignees"`
 	} `json:"content"`
 	Type        string `json:"type"`
 	FieldValues struct {
@@ -262,6 +269,10 @@ func parseProjectItem(item gqlProjectItem) ProjectItem {
 		URL:    item.Content.URL,
 		State:  item.Content.State,
 		Type:   item.Type,
+	}
+
+	for _, node := range item.Content.Assignees.Nodes {
+		pi.Assignees = append(pi.Assignees, node.Login)
 	}
 
 	// 从字段值中提取迭代标题和状态

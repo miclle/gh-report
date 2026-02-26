@@ -13,13 +13,14 @@ type ProjectIteration struct {
 
 // ProjectItem 表示 GitHub Projects v2 项目中的一个工作项。
 type ProjectItem struct {
-	Title     string // 标题
-	Number    int    // Issue 或 PR 编号
-	URL       string // 链接地址
-	State     string // 状态（OPEN、CLOSED、MERGED）
-	Type      string // 类型（"Issue" 或 "PullRequest"）
-	Iteration string // 所属迭代标题
-	Status    string // 状态字段值（如 "Done"、"In Progress"）
+	Title     string   // 标题
+	Number    int      // Issue 或 PR 编号
+	URL       string   // 链接地址
+	State     string   // 状态（OPEN、CLOSED、MERGED）
+	Type      string   // 类型（"Issue" 或 "PullRequest"）
+	Iteration string   // 所属迭代标题
+	Status    string   // 状态字段值（如 "Done"、"In Progress"）
+	Assignees []string // 负责人列表（GitHub login）
 }
 
 // Project 表示一个 GitHub Projects v2 项目，包含迭代信息。

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	gh "github.com/google/go-github/v69/github"
+
 	"github.com/miclle/report/github"
 )
 
@@ -144,6 +146,10 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 			if user != "" && pr.GetUser().GetLogin() != user {
 				continue
 			}
+			// 有 Assignees 但不包含当前用户时跳过（属于别人的任务）
+			if user != "" && len(pr.Assignees) > 0 && !hasAssignee(pr.Assignees, user) {
+				continue
+			}
 			state := prDisplayState(pr)
 			if state == "merged" || state == "closed" {
 				continue
@@ -176,6 +182,10 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 					continue
 				}
 				if !strings.Contains(item.URL, fullRepo) {
+					continue
+				}
+				// 有 Assignees 但不包含当前用户时跳过（属于别人的任务）
+				if user != "" && len(item.Assignees) > 0 && !containsString(item.Assignees, user) {
 					continue
 				}
 				// 跳过已完成的项目
@@ -315,4 +325,24 @@ func BuildSummaryPrompt(reports []RepoReport, since, until time.Time, user strin
 	sb.WriteString(formatPlanData(planItems))
 
 	return sb.String()
+}
+
+// hasAssignee 检查 GitHub User 列表中是否包含指定用户。
+func hasAssignee(assignees []*gh.User, login string) bool {
+	for _, a := range assignees {
+		if a.GetLogin() == login {
+			return true
+		}
+	}
+	return false
+}
+
+// containsString 检查字符串切片中是否包含指定值。
+func containsString(ss []string, target string) bool {
+	for _, s := range ss {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
