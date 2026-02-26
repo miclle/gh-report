@@ -184,8 +184,8 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 				if !strings.Contains(item.URL, fullRepo) {
 					continue
 				}
-				// 有 Assignees 但不包含当前用户时跳过（属于别人的任务）
-				if user != "" && len(item.Assignees) > 0 && !containsString(item.Assignees, user) {
+				// 指定用户时，只纳入 Assignees 包含该用户的项目
+				if user != "" && !containsString(item.Assignees, user) {
 					continue
 				}
 				// 跳过已完成的项目
