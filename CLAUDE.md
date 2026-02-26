@@ -1,0 +1,37 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Run
+
+```bash
+make build          # go build -o gh-report .
+make run            # build + run with config.local.yaml -days 14
+make clean          # rm gh-report
+go vet ./...        # lint check
+```
+
+No tests exist yet. No linter config (e.g. golangci-lint) is set up.
+
+## Architecture
+
+CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects v2) and outputs structured reports.
+
+**Data flow**: `main.go` (CLI parsing) → `report.Collect` (API calls) → output formatter (csv/summary/ai)
+
+**Packages**:
+- `main` — CLI flags, config loading, output format dispatch
+- `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
+- `report` — Data collection (`collector.go`), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
+- `anthropic` — Lightweight Anthropic Messages API client (raw `net/http`, no SDK)
+
+**Config resolution priority**: CLI flag > YAML config file > environment variable > hardcoded default
+
+**Key env vars**: `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`
+
+## Conventions
+
+- All comments and documentation are in **Chinese**; code identifiers are in English
+- Exported functions/types must have Go-style doc comments starting with the identifier name (in Chinese)
+- Commit messages follow simplified Angular convention: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf` — written in Chinese
+- `config.local.yaml` is git-ignored for local development; `config.example.yaml` is the tracked template

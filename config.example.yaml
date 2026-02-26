@@ -1,0 +1,28 @@
+# GitHub Token（也可通过 GITHUB_TOKEN 环境变量设置）
+# token: ghp_xxx
+
+# 需要追踪的仓库列表
+repos:
+  - own/repo1
+  - own/repo2
+
+# 查看最近几天的活动（默认: 1）
+days: 7
+
+# 按用户过滤（可选，注释掉则显示所有用户）
+# user: own
+
+# 输出格式: csv（默认）或 summary
+# format: summary
+
+# 是否调用 Claude API 直接生成日报（需配合 format: summary 使用）
+# ai: true
+
+# Anthropic API Key（也可通过 ANTHROPIC_API_KEY 环境变量设置）
+# anthropic_key: sk-ant-xxx
+
+# Anthropic API Base URL（也可通过 ANTHROPIC_BASE_URL 环境变量设置）
+# anthropic_base_url: https://api.anthropic.com
+
+# Claude 模型名（默认: claude-sonnet-4-20250514）
+# model: claude-sonnet-4-20250514
