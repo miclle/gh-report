@@ -4,6 +4,7 @@ package report
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +68,7 @@ func Collect(ctx context.Context, client *github.Client, opts Options) ([]RepoRe
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				fmt.Printf("Warning: could not fetch projects for %s: %v\n", owner, err)
+				fmt.Fprintf(os.Stderr, "Warning: could not fetch projects for %s: %v\n", owner, err)
 				orgProjects[owner] = nil
 			} else {
 				orgProjects[owner] = projects

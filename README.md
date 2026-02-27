@@ -15,6 +15,7 @@ GitHub 仓库活动报告生成工具。通过 GitHub API 获取指定仓库（�
   - `csv`（默认）— CSV 分段格式，展示原始活动数据
   - `summary` — 结构化的"今日工作 + 明日计划"数据及 Prompt 模板
 - **AI 日报生成** — 通过 Claude API 将活动数据自动整理为工作日报
+- **友好的终端体验** — 彩色错误提示、加载动画、Shell 补全支持
 
 ## 环境要求
 
@@ -44,21 +45,21 @@ make build
 
 工具需要 GitHub Personal Access Token，按以下优先级解析：
 
-1. `-token` 命令行参数
+1. `--token` 命令行参数
 2. 配置文件中的 `token` 字段
 3. `GITHUB_TOKEN` 环境变量
 
 ### Anthropic API Key（可选，用于 AI 日报生成）
 
-当使用 `-format summary -ai` 模式时，需要 Anthropic API Key，按以下优先级解析：
+当使用 `-f summary --ai` 模式时，需要 Anthropic API Key，按以下优先级解析：
 
-1. `-anthropic-key` 命令行参数
+1. `--anthropic-key` 命令行参数
 2. 配置文件中的 `anthropic_key` 字段
 3. `ANTHROPIC_API_KEY` 环境变量
 
 Anthropic API Base URL 按以下优先级解析（可选，默认为 `https://api.anthropic.com`）：
 
-1. `-anthropic-base-url` 命令行参数
+1. `--anthropic-base-url` 命令行参数
 2. 配置文件中的 `anthropic_base_url` 字段
 3. `ANTHROPIC_BASE_URL` 环境变量
 
@@ -99,18 +100,18 @@ days: 14
 
 ### 命令行参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-config` | YAML 配置文件路径 | — |
-| `-repos` | 逗号分隔的仓库列表（`owner/repo` 格式） | — |
-| `-days` | 查看最近几天的活动 | `1` |
-| `-user` | 按 GitHub 用户名过滤 | —（显示所有用户） |
-| `-token` | GitHub Personal Access Token | — |
-| `-format` | 输出格式：`csv`（默认）或 `summary` | `csv` |
-| `-ai` | 调用 Claude API 直接生成日报 | `false` |
-| `-anthropic-key` | Anthropic API Key | — |
-| `-anthropic-base-url` | Anthropic API Base URL | `https://api.anthropic.com` |
-| `-model` | Claude 模型名 | `claude-sonnet-4-20250514` |
+| 参数 | 短选项 | 说明 | 默认值 |
+|------|--------|------|--------|
+| `--config` | `-c` | YAML 配置文件路径 | — |
+| `--repos` | `-r` | 逗号分隔的仓库列表（`owner/repo` 格式） | — |
+| `--days` | `-d` | 查看最近几天的活动 | `1` |
+| `--user` | `-u` | 按 GitHub 用户名过滤 | —（显示所有用户） |
+| `--token` | | GitHub Personal Access Token | — |
+| `--format` | `-f` | 输出格式：`csv`（默认）或 `summary` | `csv` |
+| `--ai` | | 调用 Claude API 直接生成日报 | `false` |
+| `--anthropic-key` | | Anthropic API Key | — |
+| `--anthropic-base-url` | | Anthropic API Base URL | `https://api.anthropic.com` |
+| `--model` | | Claude 模型名 | `claude-sonnet-4-20250514` |
 
 命令行参数优先级高于配置文件中的值。
 
@@ -129,7 +130,7 @@ make run CONFIG=config.yaml
 ### 通过配置文件运行
 
 ```bash
-./gh-report -config config.yaml
+gh-report -c config.yaml
 ```
 
 ### 通过命令行参数运行
@@ -137,13 +138,13 @@ make run CONFIG=config.yaml
 ```bash
 # 单仓库，最近 1 天
 export GITHUB_TOKEN=ghp_xxx
-./gh-report -repos own/repo1
+gh-report -r own/repo1
 
 # 多仓库，最近 7 天，按用户过滤
-./gh-report -repos own/repo1,own/repo2 -days 7 -user alice
+gh-report -r own/repo1,own/repo2 -d 7 -u alice
 
 # 直接传入 Token
-./gh-report -repos own/repo1 -days 3 -token ghp_xxx
+gh-report -r own/repo1 -d 3 --token ghp_xxx
 ```
 
 ### 配置文件 + 命令行参数混合使用
@@ -151,7 +152,7 @@ export GITHUB_TOKEN=ghp_xxx
 命令行参数会覆盖配置文件中的对应值：
 
 ```bash
-./gh-report -config config.yaml -days 7 -user alice
+gh-report -c config.yaml -d 7 -u alice
 ```
 
 ### Summary 模式
@@ -159,7 +160,7 @@ export GITHUB_TOKEN=ghp_xxx
 输出结构化的"今日工作 + 明日计划"数据和 Prompt 模板：
 
 ```bash
-./gh-report -config config.yaml -format summary
+gh-report -c config.yaml -f summary
 ```
 
 ### AI 日报生成
@@ -168,10 +169,34 @@ export GITHUB_TOKEN=ghp_xxx
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-xxx
-./gh-report -config config.yaml -format summary -ai
+gh-report -c config.yaml -f summary --ai
 
 # 指定模型
-./gh-report -config config.yaml -format summary -ai -model claude-sonnet-4-20250514
+gh-report -c config.yaml -f summary --ai --model claude-sonnet-4-20250514
+```
+
+### 版本信息
+
+```bash
+gh-report version
+```
+
+### Shell 补全
+
+生成 Shell 补全脚本：
+
+```bash
+# Bash
+gh-report completion bash > /etc/bash_completion.d/gh-report
+
+# Zsh
+gh-report completion zsh > "${fpath[1]}/_gh-report"
+
+# Fish
+gh-report completion fish > ~/.config/fish/completions/gh-report.fish
+
+# PowerShell
+gh-report completion powershell | Out-String | Invoke-Expression
 ```
 
 ## 输出示例
@@ -218,10 +243,12 @@ own/repo1,Sprint Board,Sprint 2026-W09,Current,98,deploy(frontend): 沙箱管理
 
 ```
 gh-report/
-├── main.go                 # CLI 入口，参数解析与执行
-├── config.go               # YAML 配置文件加载
+├── main.go                 # CLI 入口
 ├── config.example.yaml     # 配置文件示例
 ├── Makefile                # 构建和运行脚本
+├── cmd/
+│   ├── root.go             # 根命令定义、flags 注册、主逻辑
+│   └── version.go          # version 子命令
 ├── anthropic/
 │   └── client.go           # Anthropic Messages API 客户端
 ├── github/

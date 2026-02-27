@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-make build          # go build -o gh-report .
-make run            # build + run with config.local.yaml -days 14
+make build          # go build with ldflags -o gh-report .
+make run            # build + run with config.local.yaml
+make install        # go install with ldflags
 make clean          # rm gh-report
 go vet ./...        # lint check
 ```
@@ -17,10 +18,11 @@ No tests exist yet. No linter config (e.g. golangci-lint) is set up.
 
 CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects v2) and outputs structured reports.
 
-**Data flow**: `main.go` (CLI parsing) → `report.Collect` (API calls) → output formatter (csv/summary/ai)
+**Data flow**: `main.go` → `cmd.Execute()` (Cobra CLI) → `report.Collect` (API calls) → output formatter (csv/summary/ai)
 
 **Packages**:
-- `main` — CLI flags, config loading, output format dispatch
+- `main` — Entry point, calls `cmd.Execute()`
+- `cmd` — Cobra CLI commands (`root.go`: root command + flags + config loading; `version.go`: version subcommand)
 - `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
 - `report` — Data collection (`collector.go`), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
 - `anthropic` — Lightweight Anthropic Messages API client (raw `net/http`, no SDK)
