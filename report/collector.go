@@ -33,9 +33,19 @@ type Options struct {
 	User  string   // 按用户过滤（为空则不过滤）
 }
 
+// Progress 报告数据收集进度的接口。
+// 实现方可用于在终端展示进度条等 UI 反馈。
+type Progress interface {
+	// SetTotal 设置指定仓库的总步骤数。
+	SetTotal(repoIndex int, total int)
+	// Increment 报告指定仓库完成一个步骤。
+	Increment(repoIndex int)
+}
+
 // Collect 收集指定仓库的所有活动数据。
 // 使用三层并发策略加速数据获取：组织 Projects 与仓库数据并发、仓库内 4 个接口并发、PR Review 并发。
-func Collect(ctx context.Context, client *github.Client, opts Options) ([]RepoReport, error) {
+// progress 参数可选，用于报告每个仓库的数据获取进度。
+func Collect(ctx context.Context, client *github.Client, opts Options, progress Progress) ([]RepoReport, error) {
 	since := time.Now().AddDate(0, 0, -opts.Days)
 
 	// 解析仓库列表，收集唯一 owner
@@ -83,7 +93,7 @@ func Collect(ctx context.Context, client *github.Client, opts Options) ([]RepoRe
 		wg.Add(1)
 		go func(idx int, owner, repo string) {
 			defer wg.Done()
-			rr, err := collectRepo(ctx, client, owner, repo, since, opts.User)
+			rr, err := collectRepo(ctx, client, owner, repo, since, opts.User, progress, idx)
 			if err != nil {
 				repoErrs[idx] = err
 				return
@@ -112,7 +122,7 @@ func Collect(ctx context.Context, client *github.Client, opts Options) ([]RepoRe
 // collectRepo 并发收集单个仓库的所有活动数据。
 // 第二层并发：同时获取 Issues、PRs、Issue Comments、Review Comments。
 // 第三层并发：并发获取每个 PR 的 Review。
-func collectRepo(ctx context.Context, client *github.Client, owner, repo string, since time.Time, user string) (*RepoReport, error) {
+func collectRepo(ctx context.Context, client *github.Client, owner, repo string, since time.Time, user string, progress Progress, repoIndex int) (*RepoReport, error) {
 	rr := &RepoReport{
 		Owner:   owner,
 		Repo:    repo,
@@ -137,21 +147,33 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 	go func() {
 		defer wg.Done()
 		rawIssues, errIssues = client.ListIssues(ctx, owner, repo, since)
+		if progress != nil {
+			progress.Increment(repoIndex)
+		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		rawPRs, errPRs = client.ListPullRequests(ctx, owner, repo, since)
+		if progress != nil {
+			progress.Increment(repoIndex)
+		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		rawComments, errComments = client.ListIssueComments(ctx, owner, repo, since)
+		if progress != nil {
+			progress.Increment(repoIndex)
+		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		rawRevComments, errRevComments = client.ListReviewComments(ctx, owner, repo, since)
+		if progress != nil {
+			progress.Increment(repoIndex)
+		}
 	}()
 
 	wg.Wait()
@@ -208,6 +230,10 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 
 	// 第三层并发：并发获取每个 PR 的 Review
 	if len(rr.PullRequests) > 0 {
+		if progress != nil {
+			progress.SetTotal(repoIndex, 4+len(rr.PullRequests))
+		}
+
 		reviewResults := make([][]*gh.PullRequestReview, len(rr.PullRequests))
 		reviewErrs := make([]error, len(rr.PullRequests))
 
@@ -217,6 +243,9 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 			go func(idx int, prNumber int) {
 				defer reviewWg.Done()
 				reviewResults[idx], reviewErrs[idx] = client.ListReviews(ctx, owner, repo, prNumber)
+				if progress != nil {
+					progress.Increment(repoIndex)
+				}
 			}(i, pr.GetNumber())
 		}
 		reviewWg.Wait()

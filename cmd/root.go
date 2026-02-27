@@ -11,6 +11,8 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"gopkg.in/yaml.v3"
 
 	"github.com/miclle/gh-report/anthropic"
@@ -167,13 +169,25 @@ func runReport(cmd *cobra.Command, args []string) error {
 		User:  cfg.User,
 	}
 
-	// 获取 GitHub 数据（带 spinner）
-	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
-	s.Suffix = "  正在获取 GitHub 数据..."
-	s.Writer = os.Stderr
-	s.Start()
-	reports, err := report.Collect(ctx, client, opts)
-	s.Stop()
+	// 获取 GitHub 数据（带多进度条）
+	p := mpb.New(mpb.WithOutput(os.Stderr))
+	pb := &progressBars{bars: make([]*mpb.Bar, len(opts.Repos))}
+	for i, repoName := range opts.Repos {
+		pb.bars[i] = p.New(4,
+			mpb.BarStyle().Lbound("│").Filler("█").Tip("▌").Padding("░").Rbound("│"),
+			mpb.PrependDecorators(
+				decor.Name(repoName+" ", decor.WCSyncSpaceR),
+			),
+			mpb.AppendDecorators(
+				decor.OnComplete(decor.CountersNoUnit(" %d/%d"), " ✓"),
+			),
+		)
+	}
+	reports, err := report.Collect(ctx, client, opts, pb)
+	for _, bar := range pb.bars {
+		bar.Abort(true)
+	}
+	p.Wait()
 	if err != nil {
 		return fmt.Errorf("获取数据失败: %w", err)
 	}
@@ -226,4 +240,19 @@ func runReport(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// progressBars 通过 mpb 多进度条实现 report.Progress 接口。
+type progressBars struct {
+	bars []*mpb.Bar
+}
+
+// SetTotal 设置指定仓库进度条的总步骤数。
+func (pb *progressBars) SetTotal(repoIndex int, total int) {
+	pb.bars[repoIndex].SetTotal(int64(total), false)
+}
+
+// Increment 报告指定仓库进度条完成一个步骤。
+func (pb *progressBars) Increment(repoIndex int) {
+	pb.bars[repoIndex].Increment()
 }
