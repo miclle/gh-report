@@ -18,14 +18,16 @@ No tests exist yet. No linter config (e.g. golangci-lint) is set up.
 
 CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects v2) and outputs structured reports.
 
-**Data flow**: `main.go` → `cmd.Execute()` (Cobra CLI) → `report.Collect` (API calls) → output formatter (csv/summary/ai)
+**Data flow**: `main.go` → `cmd.Execute()` (Cobra CLI) → `report.Collect` (API calls, with mpb progress bars) → output formatter (csv/summary/ai)
 
 **Packages**:
 - `main` — Entry point, calls `cmd.Execute()`
-- `cmd` — Cobra CLI commands (`root.go`: root command + flags + config loading; `version.go`: version subcommand)
+- `cmd` — Cobra CLI commands (`root.go`: root command + flags + config loading + mpb progress bars; `version.go`: version subcommand)
 - `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
-- `report` — Data collection (`collector.go`), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
+- `report` — Data collection (`collector.go` with `Progress` interface for UI feedback), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
 - `anthropic` — Lightweight Anthropic Messages API client (raw `net/http`, no SDK)
+
+**Concurrency**: `report.Collect` uses three-level concurrency — org Projects vs repo data in parallel (separate WaitGroups), 4 API calls per repo in parallel, PR reviews in parallel. Progress is reported via the `Progress` interface (implemented by `cmd.progressBars` using mpb).
 
 **Config resolution priority**: CLI flag > YAML config file > environment variable > hardcoded default
 
