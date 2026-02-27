@@ -170,24 +170,30 @@ func runReport(cmd *cobra.Command, args []string) error {
 	}
 
 	// 获取 GitHub 数据（带多进度条）
+	// 初始 total=6：4 个基础 API 调用 + 1 完成步 + 1 Projects 关联步
 	p := mpb.New(mpb.WithOutput(os.Stderr))
 	pb := &progressBars{bars: make([]*mpb.Bar, len(opts.Repos))}
 	for i, repoName := range opts.Repos {
-		pb.bars[i] = p.New(4,
-			mpb.BarStyle().Lbound("│").Filler("█").Tip("▌").Padding("░").Rbound("│"),
+		pb.bars[i] = p.New(6,
+			mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(".").Rbound("]"),
+			mpb.BarWidth(30),
 			mpb.PrependDecorators(
-				decor.Name(repoName+" ", decor.WCSyncSpaceR),
+				decor.Name(color.CyanString(repoName)+" ", decor.WCSyncSpaceR),
 			),
 			mpb.AppendDecorators(
-				decor.OnComplete(decor.CountersNoUnit(" %d/%d"), " ✓"),
+				decor.Percentage(decor.WCSyncSpace),
 			),
 		)
 	}
 	reports, err := report.Collect(ctx, client, opts, pb)
-	for _, bar := range pb.bars {
-		bar.Abort(true)
+	if err != nil {
+		// 出错时中止未完成的进度条，确保 p.Wait() 不会阻塞
+		for _, bar := range pb.bars {
+			bar.Abort(false)
+		}
 	}
 	p.Wait()
+	fmt.Fprintln(os.Stderr)
 	if err != nil {
 		return fmt.Errorf("获取数据失败: %w", err)
 	}

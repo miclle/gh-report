@@ -64,16 +64,14 @@ func Collect(ctx context.Context, client *github.Client, opts Options, progress 
 		owners[parts[0]] = struct{}{}
 	}
 
-	// 第一层并发：同时获取组织 Projects 和各仓库数据
-	var wg sync.WaitGroup
-
-	// 并发获取各组织的 Projects
+	// 第一层并发：同时获取组织 Projects 和各仓库数据（独立 WaitGroup）
+	var orgWg sync.WaitGroup
 	var mu sync.Mutex
 	orgProjects := make(map[string][]github.Project)
 	for owner := range owners {
-		wg.Add(1)
+		orgWg.Add(1)
 		go func(owner string) {
-			defer wg.Done()
+			defer orgWg.Done()
 			projects, err := client.ListProjects(ctx, owner)
 			mu.Lock()
 			defer mu.Unlock()
@@ -87,12 +85,13 @@ func Collect(ctx context.Context, client *github.Client, opts Options, progress 
 	}
 
 	// 并发收集每个仓库的数据
+	var repoWg sync.WaitGroup
 	reports := make([]RepoReport, len(repos))
 	repoErrs := make([]error, len(repos))
 	for i, ri := range repos {
-		wg.Add(1)
+		repoWg.Add(1)
 		go func(idx int, owner, repo string) {
-			defer wg.Done()
+			defer repoWg.Done()
 			rr, err := collectRepo(ctx, client, owner, repo, since, opts.User, progress, idx)
 			if err != nil {
 				repoErrs[idx] = err
@@ -102,7 +101,8 @@ func Collect(ctx context.Context, client *github.Client, opts Options, progress 
 		}(i, ri.owner, ri.repo)
 	}
 
-	wg.Wait()
+	// 先等待仓库数据（进度条跟踪此阶段）
+	repoWg.Wait()
 
 	// 检查仓库数据收集错误
 	for _, err := range repoErrs {
@@ -111,9 +111,15 @@ func Collect(ctx context.Context, client *github.Client, opts Options, progress 
 		}
 	}
 
-	// 关联 Projects 到对应仓库
+	// 等待组织 Projects（通常与仓库数据同步完成或更早）
+	orgWg.Wait()
+
+	// 关联 Projects 到对应仓库，并推进进度条最后一步
 	for i := range reports {
 		reports[i].Projects = orgProjects[reports[i].Owner]
+		if progress != nil {
+			progress.Increment(i)
+		}
 	}
 
 	return reports, nil
@@ -230,8 +236,9 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 
 	// 第三层并发：并发获取每个 PR 的 Review
 	if len(rr.PullRequests) > 0 {
+		// 更新总步数：4 个 API 调用 + N 个 Review + 1 完成步 + 1 Projects 关联步
 		if progress != nil {
-			progress.SetTotal(repoIndex, 4+len(rr.PullRequests))
+			progress.SetTotal(repoIndex, 4+len(rr.PullRequests)+2)
 		}
 
 		reviewResults := make([][]*gh.PullRequestReview, len(rr.PullRequests))
@@ -259,6 +266,11 @@ func collectRepo(ctx context.Context, client *github.Client, owner, repo string,
 				rr.Reviews[pr.GetNumber()] = reviewResults[i]
 			}
 		}
+	}
+
+	// 完成步：确保进度条到达 100%
+	if progress != nil {
+		progress.Increment(repoIndex)
 	}
 
 	return rr, nil
