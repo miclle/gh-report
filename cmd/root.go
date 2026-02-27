@@ -182,6 +182,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 			),
 			mpb.AppendDecorators(
 				decor.Percentage(decor.WCSyncSpace),
+				decor.OnComplete(decor.Spinner(nil, decor.WC{W: 2}), " "+color.GreenString("✓")),
 			),
 		)
 	}
