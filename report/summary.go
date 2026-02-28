@@ -34,17 +34,31 @@ type PlanItem struct {
 }
 
 // extractWorkItems 从报告数据中提取今日工作条目。
+// 始终以当天零点为基准过滤，只保留今天有实际活动（创建、合并、关闭）的条目。
 func extractWorkItems(reports []RepoReport, user string) []WorkItem {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var items []WorkItem
-	// 记录用户作为 PR 作者的条目，用于去重（PR 作者优先于评论）
+	// 记录用户作为 PR 作者的所有条目（不限日期），用于去重评论和 review
 	prAuthorKeys := make(map[string]bool)
 
 	for _, rr := range reports {
 		fullRepo := rr.Owner + "/" + rr.Repo
 
-		// 用户的 PR
+		// 先收集用户的所有 PR 编号，用于后续去重（用户自己 PR 上的评论不单独列出）
 		for _, pr := range rr.PullRequests {
 			if user != "" && pr.GetUser().GetLogin() != user {
+				continue
+			}
+			prAuthorKeys[fmt.Sprintf("%s#%d", fullRepo, pr.GetNumber())] = true
+		}
+
+		// 用户的 PR（只保留在时间范围内创建、合并或关闭的）
+		for _, pr := range rr.PullRequests {
+			if user != "" && pr.GetUser().GetLogin() != user {
+				continue
+			}
+			if !prWorkedSince(pr, today) {
 				continue
 			}
 			state := prDisplayState(pr)
@@ -59,16 +73,18 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 				URL:        pr.GetHTMLURL(),
 				ReviewInfo: reviews,
 			})
-			prAuthorKeys[fmt.Sprintf("%s#%d", fullRepo, pr.GetNumber())] = true
 		}
 
-		// 用户的 Issue
+		// 用户的 Issue（只保留在时间范围内创建或关闭的）
 		for _, issue := range rr.Issues {
 			if user != "" && issue.GetUser().GetLogin() != user {
 				continue
 			}
 			// 有 Assignees 但不包含当前用户时跳过（属于别人的任务）
 			if user != "" && len(issue.Assignees) > 0 && !hasAssignee(issue.Assignees, user) {
+				continue
+			}
+			if !issueWorkedSince(issue, today) {
 				continue
 			}
 			items = append(items, WorkItem{
@@ -81,10 +97,13 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 			})
 		}
 
-		// Issue 评论（按 Issue 分组去重，只记一条）
+		// Issue 评论（按 Issue 分组去重，只记一条；只保留今天的评论）
 		commentedIssues := make(map[string]bool)
 		for _, c := range rr.IssueComments {
 			if user != "" && c.GetUser().GetLogin() != user {
+				continue
+			}
+			if c.GetCreatedAt().Before(today) {
 				continue
 			}
 			num := extractNumber(c.GetIssueURL())
@@ -107,10 +126,13 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 			})
 		}
 
-		// Review（审查他人 PR，按 PR 分组去重）
+		// Review（审查他人 PR，按 PR 分组去重；只保留今天的 review）
 		reviewedPRs := make(map[string]bool)
 		for _, c := range rr.ReviewComments {
 			if user != "" && c.GetUser().GetLogin() != user {
+				continue
+			}
+			if c.GetCreatedAt().Before(today) {
 				continue
 			}
 			num := extractNumber(c.GetPullRequestURL())
@@ -337,6 +359,34 @@ func hasAssignee(assignees []*gh.User, login string) bool {
 		if a.GetLogin() == login {
 			return true
 		}
+	}
+	return false
+}
+
+// prWorkedSince 判断 PR 在指定时间之后是否有实际工作活动（创建、合并、关闭）。
+// 与 collector 层的 prHasActivitySince 不同，此函数不对 open 状态的 PR 放行，
+// 确保"今日工作"只包含在时间范围内有明确动作的 PR。
+func prWorkedSince(pr *gh.PullRequest, since time.Time) bool {
+	if !pr.GetCreatedAt().Before(since) {
+		return true
+	}
+	if pr.MergedAt != nil && !pr.MergedAt.Before(since) {
+		return true
+	}
+	if pr.ClosedAt != nil && !pr.ClosedAt.Before(since) {
+		return true
+	}
+	return false
+}
+
+// issueWorkedSince 判断 Issue 在指定时间之后是否有实际工作活动（创建、关闭）。
+// 排除仅因 bot 操作或标签变更导致 UpdatedAt 更新的旧 Issue。
+func issueWorkedSince(issue *gh.Issue, since time.Time) bool {
+	if !issue.GetCreatedAt().Before(since) {
+		return true
+	}
+	if issue.ClosedAt != nil && !issue.ClosedAt.Before(since) {
+		return true
 	}
 	return false
 }
