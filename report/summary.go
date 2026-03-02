@@ -41,6 +41,8 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 	var items []WorkItem
 	// 记录用户作为 PR 作者的所有条目（不限日期），用于去重评论和 review
 	prAuthorKeys := make(map[string]bool)
+	// 记录已纳入今日工作的 Issue，用于去重评论
+	issueKeys := make(map[string]bool)
 
 	for _, rr := range reports {
 		fullRepo := rr.Owner + "/" + rr.Repo
@@ -81,6 +83,7 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 			if !issueWorkedSince(issue, today) {
 				continue
 			}
+			issueKeys[fmt.Sprintf("%s#%d", fullRepo, issue.GetNumber())] = true
 			items = append(items, WorkItem{
 				Type:   "issue",
 				Repo:   fullRepo,
@@ -104,6 +107,10 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 			key := fullRepo + "#" + num
 			// 如果用户是 PR 作者，跳过该条评论
 			if prAuthorKeys[key] {
+				continue
+			}
+			// 如果该 Issue 已纳入今日工作，跳过评论（避免重复）
+			if issueKeys[key] {
 				continue
 			}
 			if commentedIssues[key] {
