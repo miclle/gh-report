@@ -33,6 +33,10 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 
 **Key env vars**: `GITHUB_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`
 
+**Detailed docs**:
+- [docs/report-rules.md](docs/report-rules.md) — 报告业务规则（今日工作/明日计划的纳入排除规则、状态映射）
+- [docs/report-generation.md](docs/report-generation.md) — 报告生成技术文档（数据流、并发模型、过滤层次）
+
 ## Conventions
 
 - All comments and documentation are in **Chinese**; code identifiers are in English
