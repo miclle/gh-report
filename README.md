@@ -257,11 +257,18 @@ gh-report/
 │   ├── issues.go           # Issue 和 Issue 评论获取
 │   ├── pulls.go            # PR、Review、Review 评论获取
 │   └── projects.go         # Projects v2 GraphQL 查询（迭代信息）
-└── report/
-    ├── collector.go        # 按仓库收集和聚合数据
-    ├── printer.go          # CSV 格式化输出
-    └── summary.go          # Summary 模式（今日工作 + 明日计划 + Prompt）
+├── report/
+│   ├── collector.go        # 按仓库收集和聚合数据
+│   ├── printer.go          # CSV 格式化输出
+│   └── summary.go          # Summary 模式（今日工作 + 明日计划 + Prompt）
+└── docs/
+    ├── report-rules.md     # 报告业务规则
+    └── report-generation.md # 报告生成技术文档
 ```
+
+详细的报告生成规则和技术文档请参考：
+- [报告业务规则](docs/report-rules.md) — 今日工作 / 明日计划的纳入排除规则、状态映射
+- [报告生成技术文档](docs/report-generation.md) — 数据流、并发模型、过滤层次
 
 ## 许可证
 
