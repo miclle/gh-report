@@ -45,20 +45,14 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 	for _, rr := range reports {
 		fullRepo := rr.Owner + "/" + rr.Repo
 
-		// 先收集用户的所有 PR 编号，用于后续去重（用户自己 PR 上的评论不单独列出）
+		// 用户的 PR：收集 prAuthorKeys 用于评论/review 去重，同时过滤今日活动条目
 		for _, pr := range rr.PullRequests {
 			if user != "" && pr.GetUser().GetLogin() != user {
 				continue
 			}
 			prAuthorKeys[fmt.Sprintf("%s#%d", fullRepo, pr.GetNumber())] = true
-		}
 
-		// 用户的 PR（只保留在时间范围内创建、合并或关闭的）
-		for _, pr := range rr.PullRequests {
-			if user != "" && pr.GetUser().GetLogin() != user {
-				continue
-			}
-			if !prWorkedSince(pr, today) {
+			if !prHasActivitySince(pr, today) {
 				continue
 			}
 			state := prDisplayState(pr)
@@ -161,7 +155,7 @@ func extractWorkItems(reports []RepoReport, user string) []WorkItem {
 // extractPlanItems 从报告数据中提取明日计划条目。
 func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 	var items []PlanItem
-	seen := make(map[string]bool) // 按 owner/repo#number 去重
+	seen := make(map[string]int) // 按 owner/repo#number 去重，值为 items 中的索引
 
 	now := time.Now()
 
@@ -181,10 +175,10 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 				continue
 			}
 			key := fmt.Sprintf("%s#%d", fullRepo, pr.GetNumber())
-			if seen[key] {
+			if _, ok := seen[key]; ok {
 				continue
 			}
-			seen[key] = true
+			seen[key] = len(items)
 			items = append(items, PlanItem{
 				Repo:   fullRepo,
 				Number: pr.GetNumber(),
@@ -221,16 +215,14 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 					continue
 				}
 				key := fmt.Sprintf("%s#%d", fullRepo, item.Number)
-				if seen[key] {
+				if idx, ok := seen[key]; ok {
 					// 如果已经从 open_pr 来源添加，补充 status 信息
-					for i := range items {
-						if fmt.Sprintf("%s#%d", items[i].Repo, items[i].Number) == key && items[i].Status == "" {
-							items[i].Status = item.Status
-						}
+					if items[idx].Status == "" {
+						items[idx].Status = item.Status
 					}
 					continue
 				}
-				seen[key] = true
+				seen[key] = len(items)
 				items = append(items, PlanItem{
 					Repo:   fullRepo,
 					Number: item.Number,
@@ -333,14 +325,18 @@ func PrintSummaryData(w io.Writer, reports []RepoReport, since, until time.Time,
 	// 输出完整 Prompt（方便用户复制粘贴给 AI）
 	fmt.Fprintln(w, "========== Prompt（复制以下内容粘贴给 AI）==========")
 	fmt.Fprintln(w)
-	fmt.Fprint(w, BuildSummaryPrompt(reports, since, until, user))
+	fmt.Fprint(w, buildSummaryPromptFromItems(workItems, planItems, since, until, user))
 }
 
 // BuildSummaryPrompt 构建完整的 Prompt 文本，供 API 调用或手动粘贴。
 func BuildSummaryPrompt(reports []RepoReport, since, until time.Time, user string) string {
 	workItems := extractWorkItems(reports, user)
 	planItems := extractPlanItems(reports, user)
+	return buildSummaryPromptFromItems(workItems, planItems, since, until, user)
+}
 
+// buildSummaryPromptFromItems 根据已提取的工作和计划条目构建 Prompt 文本。
+func buildSummaryPromptFromItems(workItems []WorkItem, planItems []PlanItem, since, until time.Time, user string) string {
 	var sb strings.Builder
 	sb.WriteString(buildPromptTemplate(since, until, user))
 	sb.WriteString("\n")
@@ -359,24 +355,6 @@ func hasAssignee(assignees []*gh.User, login string) bool {
 		if a.GetLogin() == login {
 			return true
 		}
-	}
-	return false
-}
-
-// prWorkedSince 判断 PR 是否应纳入今日工作。
-// open/draft 状态的 PR 视为进行中的工作，始终纳入；已合并或已关闭的 PR 仅在当天操作时纳入。
-func prWorkedSince(pr *gh.PullRequest, since time.Time) bool {
-	if pr.GetState() == "open" {
-		return true
-	}
-	if !pr.GetCreatedAt().Before(since) {
-		return true
-	}
-	if pr.MergedAt != nil && !pr.MergedAt.Before(since) {
-		return true
-	}
-	if pr.ClosedAt != nil && !pr.ClosedAt.Before(since) {
-		return true
 	}
 	return false
 }
