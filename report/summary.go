@@ -363,10 +363,12 @@ func hasAssignee(assignees []*gh.User, login string) bool {
 	return false
 }
 
-// prWorkedSince 判断 PR 在指定时间之后是否有实际工作活动（创建、合并、关闭）。
-// 与 collector 层的 prHasActivitySince 不同，此函数不对 open 状态的 PR 放行，
-// 确保"今日工作"只包含在时间范围内有明确动作的 PR。
+// prWorkedSince 判断 PR 是否应纳入今日工作。
+// open/draft 状态的 PR 视为进行中的工作，始终纳入；已合并或已关闭的 PR 仅在当天操作时纳入。
 func prWorkedSince(pr *gh.PullRequest, since time.Time) bool {
+	if pr.GetState() == "open" {
+		return true
+	}
 	if !pr.GetCreatedAt().Before(since) {
 		return true
 	}
@@ -379,9 +381,12 @@ func prWorkedSince(pr *gh.PullRequest, since time.Time) bool {
 	return false
 }
 
-// issueWorkedSince 判断 Issue 在指定时间之后是否有实际工作活动（创建、关闭）。
-// 排除仅因 bot 操作或标签变更导致 UpdatedAt 更新的旧 Issue。
+// issueWorkedSince 判断 Issue 是否应纳入今日工作。
+// open 状态的 Issue 视为进行中的工作，始终纳入；已关闭的 Issue 仅在当天关闭时纳入。
 func issueWorkedSince(issue *gh.Issue, since time.Time) bool {
+	if issue.GetState() == "open" {
+		return true
+	}
 	if !issue.GetCreatedAt().Before(since) {
 		return true
 	}
