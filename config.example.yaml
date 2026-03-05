@@ -15,14 +15,25 @@ days: 7
 # 输出格式: csv（默认）或 summary
 # format: summary
 
-# 是否调用 Claude API 直接生成日报（需配合 format: summary 使用）
+# 是否调用 AI API 直接生成日报（需配合 format: summary 使用）
 # ai: true
 
-# Anthropic API Key（也可通过 ANTHROPIC_API_KEY 环境变量设置）
+# AI 服务提供商: anthropic（默认）或 openai
+# ai_provider: anthropic
+
+# AI API Key（也可通过 ANTHROPIC_API_KEY / OPENAI_API_KEY / AI_API_KEY 环境变量设置）
+# ai_key: sk-xxx
+
+# AI API Base URL（也可通过 ANTHROPIC_BASE_URL / OPENAI_BASE_URL 环境变量设置）
+# ai_base_url: https://api.anthropic.com
+
+# AI 模型名（默认: anthropic 为 claude-sonnet-4-20250514，openai 为 gpt-4o）
+# model: claude-sonnet-4-20250514
+
+# ===== 以下字段已废弃，请使用上方新字段 =====
+
+# Anthropic API Key（已废弃，请使用 ai_key）
 # anthropic_key: sk-ant-xxx
 
-# Anthropic API Base URL（也可通过 ANTHROPIC_BASE_URL 环境变量设置）
+# Anthropic API Base URL（已废弃，请使用 ai_base_url）
 # anthropic_base_url: https://api.anthropic.com
-
-# Claude 模型名（默认: claude-sonnet-4-20250514）
-# model: claude-sonnet-4-20250514

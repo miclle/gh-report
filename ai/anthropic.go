@@ -1,5 +1,4 @@
-// Package anthropic 提供 Anthropic Messages API 的轻量级客户端。
-package anthropic
+package ai
 
 import (
 	"bytes"
@@ -10,23 +9,23 @@ import (
 	"net/http"
 )
 
-const defaultBaseURL = "https://api.anthropic.com"
+const anthropicDefaultBaseURL = "https://api.anthropic.com"
 
-// Client 是 Anthropic Messages API 客户端。
-type Client struct {
+// anthropicClient 是 Anthropic Messages API 客户端。
+type anthropicClient struct {
 	apiKey  string
 	baseURL string
 	model   string
 	http    *http.Client
 }
 
-// NewClient 创建一个新的 Anthropic API 客户端。
+// newAnthropicClient 创建一个新的 Anthropic API 客户端。
 // baseURL 为空时使用默认值 https://api.anthropic.com。
-func NewClient(apiKey, model, baseURL string) *Client {
+func newAnthropicClient(apiKey, model, baseURL string) *anthropicClient {
 	if baseURL == "" {
-		baseURL = defaultBaseURL
+		baseURL = anthropicDefaultBaseURL
 	}
-	return &Client{
+	return &anthropicClient{
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		model:   model,
@@ -34,43 +33,43 @@ func NewClient(apiKey, model, baseURL string) *Client {
 	}
 }
 
-// message 表示 Messages API 的请求体。
-type message struct {
-	Model     string    `json:"model"`
-	MaxTokens int       `json:"max_tokens"`
-	Messages  []msgItem `json:"messages"`
+// anthropicMessage 表示 Messages API 的请求体。
+type anthropicMessage struct {
+	Model     string               `json:"model"`
+	MaxTokens int                  `json:"max_tokens"`
+	Messages  []anthropicMsgItem   `json:"messages"`
 }
 
-// msgItem 表示对话中的单条消息。
-type msgItem struct {
+// anthropicMsgItem 表示对话中的单条消息。
+type anthropicMsgItem struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// response 表示 Messages API 的响应体。
-type response struct {
-	Content []contentBlock `json:"content"`
-	Error   *apiError      `json:"error,omitempty"`
+// anthropicResponse 表示 Messages API 的响应体。
+type anthropicResponse struct {
+	Content []anthropicContentBlock `json:"content"`
+	Error   *anthropicAPIError      `json:"error,omitempty"`
 }
 
-// contentBlock 表示响应中的内容块。
-type contentBlock struct {
+// anthropicContentBlock 表示响应中的内容块。
+type anthropicContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
 
-// apiError 表示 API 返回的错误。
-type apiError struct {
+// anthropicAPIError 表示 API 返回的错误。
+type anthropicAPIError struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
 }
 
 // CreateMessage 向 Claude 发送 prompt 并返回生成的文本。
-func (c *Client) CreateMessage(ctx context.Context, prompt string) (string, error) {
-	body := message{
+func (c *anthropicClient) CreateMessage(ctx context.Context, prompt string) (string, error) {
+	body := anthropicMessage{
 		Model:     c.model,
 		MaxTokens: 4096,
-		Messages: []msgItem{
+		Messages: []anthropicMsgItem{
 			{Role: "user", Content: prompt},
 		},
 	}
@@ -104,7 +103,7 @@ func (c *Client) CreateMessage(ctx context.Context, prompt string) (string, erro
 		return "", fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var result response
+	var result anthropicResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("parsing response: %w", err)
 	}

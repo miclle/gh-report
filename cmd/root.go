@@ -15,7 +15,7 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 	"gopkg.in/yaml.v3"
 
-	"github.com/miclle/gh-report/anthropic"
+	"github.com/miclle/gh-report/ai"
 	"github.com/miclle/gh-report/github"
 	"github.com/miclle/gh-report/report"
 )
@@ -27,11 +27,18 @@ type Config struct {
 	Days  int      `yaml:"days"`  // 查看最近几天的活动
 	User  string   `yaml:"user"`  // 按用户过滤（可选）
 
-	Format           string `yaml:"format"`             // 输出格式：csv（默认）或 summary
-	AI               bool   `yaml:"ai"`                 // 是否调用 Claude API 直接生成日报
-	AnthropicKey     string `yaml:"anthropic_key"`      // Anthropic API Key
-	AnthropicBaseURL string `yaml:"anthropic_base_url"` // Anthropic API Base URL（可选）
-	Model            string `yaml:"model"`              // Claude 模型名（默认 claude-sonnet-4-20250514）
+	Format string `yaml:"format"` // 输出格式：csv（默认）或 summary
+	AI     bool   `yaml:"ai"`     // 是否调用 AI API 直接生成日报
+	Model  string `yaml:"model"`  // 模型名称
+
+	// 新字段
+	AIProvider string `yaml:"ai_provider"` // AI 服务提供商: anthropic（默认）或 openai
+	AIKey      string `yaml:"ai_key"`      // AI API Key
+	AIBaseURL  string `yaml:"ai_base_url"` // AI API Base URL
+
+	// 已废弃字段（向后兼容）
+	AnthropicKey     string `yaml:"anthropic_key"`      // 已废弃，请使用 ai_key
+	AnthropicBaseURL string `yaml:"anthropic_base_url"` // 已废弃，请使用 ai_base_url
 }
 
 // LoadConfig 读取并解析 YAML 配置文件。
@@ -56,7 +63,7 @@ var rootCmd = &cobra.Command{
 
 通过 GitHub API 获取指定仓库的 Issue、Pull Request、评论、Review 以及
 Projects v2 迭代信息，生成结构化的工作报告。支持 CSV 原始数据输出和
-Summary 日报模式，并可通过 Claude API 直接生成工作日报。`,
+Summary 日报模式，并可通过 AI API（支持 Anthropic Claude 和 OpenAI）直接生成工作日报。`,
 	Example: `  # 使用配置文件生成报告
   gh-report -c config.yaml
 
@@ -66,8 +73,11 @@ Summary 日报模式，并可通过 Claude API 直接生成工作日报。`,
   # 生成摘要（可粘贴给 AI）
   gh-report -c config.yaml -f summary
 
-  # 调用 Claude API 直接生成日报
-  gh-report -c config.yaml -f summary --ai`,
+  # 调用 AI API 直接生成日报（默认使用 Anthropic Claude）
+  gh-report -c config.yaml -f summary --ai
+
+  # 使用 OpenAI 生成日报
+  gh-report -c config.yaml -f summary --ai --ai-provider openai`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          runReport,
@@ -81,10 +91,17 @@ func init() {
 	f.StringP("user", "u", "", "按用户过滤")
 	f.String("token", "", "GitHub Token（默认: $GITHUB_TOKEN）")
 	f.StringP("format", "f", "", "输出格式: csv（默认）或 summary")
-	f.Bool("ai", false, "调用 Claude API 生成日报")
-	f.String("anthropic-key", "", "Anthropic API Key（默认: $ANTHROPIC_API_KEY）")
-	f.String("anthropic-base-url", "", "Anthropic API Base URL（默认: $ANTHROPIC_BASE_URL）")
-	f.String("model", "", "Claude 模型名（默认: claude-sonnet-4-20250514）")
+	f.Bool("ai", false, "调用 AI API 生成日报")
+	f.String("ai-provider", "", "AI 服务提供商: anthropic（默认）或 openai")
+	f.String("ai-key", "", "AI API Key（默认: 按 provider 查环境变量）")
+	f.String("ai-base-url", "", "AI API Base URL")
+	f.String("model", "", "AI 模型名")
+
+	// 已废弃 flags（向后兼容）
+	f.String("anthropic-key", "", "Anthropic API Key（已废弃，请使用 --ai-key）")
+	f.String("anthropic-base-url", "", "Anthropic API Base URL（已废弃，请使用 --ai-base-url）")
+	_ = f.MarkDeprecated("anthropic-key", "请使用 --ai-key")
+	_ = f.MarkDeprecated("anthropic-base-url", "请使用 --ai-base-url")
 }
 
 // Execute 执行根命令。
@@ -132,6 +149,16 @@ func runReport(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("ai") {
 		cfg.AI, _ = cmd.Flags().GetBool("ai")
 	}
+	if cmd.Flags().Changed("ai-provider") {
+		cfg.AIProvider, _ = cmd.Flags().GetString("ai-provider")
+	}
+	if cmd.Flags().Changed("ai-key") {
+		cfg.AIKey, _ = cmd.Flags().GetString("ai-key")
+	}
+	if cmd.Flags().Changed("ai-base-url") {
+		cfg.AIBaseURL, _ = cmd.Flags().GetString("ai-base-url")
+	}
+	// 已废弃 flags 向后兼容
 	if cmd.Flags().Changed("anthropic-key") {
 		cfg.AnthropicKey, _ = cmd.Flags().GetString("anthropic-key")
 	}
@@ -205,38 +232,66 @@ func runReport(cmd *cobra.Command, args []string) error {
 	switch cfg.Format {
 	case "summary":
 		if cfg.AI {
-			// 解析 Anthropic API Key: flag > config > 环境变量
-			apiKey := cfg.AnthropicKey
-			if apiKey == "" {
-				apiKey = os.Getenv("ANTHROPIC_API_KEY")
-			}
-			if apiKey == "" {
-				return fmt.Errorf("未提供 Anthropic API Key（使用 --anthropic-key 参数、配置文件或 ANTHROPIC_API_KEY 环境变量）")
+			// 解析 AI Provider
+			provider := ai.ProviderName(cfg.AIProvider)
+			if provider == "" {
+				provider = ai.ProviderAnthropic
 			}
 
-			modelName := cfg.Model
-			if modelName == "" {
-				modelName = "claude-sonnet-4-20250514"
+			// 解析 API Key: --ai-key > ai_key > --anthropic-key(兼容) > anthropic_key(兼容) > 按 provider 查环境变量 > $AI_API_KEY
+			apiKey := cfg.AIKey
+			if apiKey == "" {
+				apiKey = cfg.AnthropicKey // 兼容旧配置
+			}
+			if apiKey == "" {
+				switch provider {
+				case ai.ProviderAnthropic:
+					apiKey = os.Getenv("ANTHROPIC_API_KEY")
+				case ai.ProviderOpenAI:
+					apiKey = os.Getenv("OPENAI_API_KEY")
+				}
+			}
+			if apiKey == "" {
+				apiKey = os.Getenv("AI_API_KEY")
+			}
+			if apiKey == "" {
+				return fmt.Errorf("未提供 AI API Key（使用 --ai-key 参数、配置文件或环境变量）")
 			}
 
-			// 解析 Anthropic Base URL: flag > config > 环境变量
-			baseURL := cfg.AnthropicBaseURL
+			// 解析 Base URL: --ai-base-url > ai_base_url > --anthropic-base-url(兼容) > anthropic_base_url(兼容) > 按 provider 查环境变量
+			baseURL := cfg.AIBaseURL
 			if baseURL == "" {
-				baseURL = os.Getenv("ANTHROPIC_BASE_URL")
+				baseURL = cfg.AnthropicBaseURL // 兼容旧配置
+			}
+			if baseURL == "" {
+				switch provider {
+				case ai.ProviderAnthropic:
+					baseURL = os.Getenv("ANTHROPIC_BASE_URL")
+				case ai.ProviderOpenAI:
+					baseURL = os.Getenv("OPENAI_BASE_URL")
+				}
 			}
 
 			prompt := report.BuildSummaryPrompt(reports, since, now, cfg.User)
-			aiClient := anthropic.NewClient(apiKey, modelName, baseURL)
+			aiClient, err := ai.NewClient(ai.Config{
+				Provider: provider,
+				APIKey:   apiKey,
+				Model:    cfg.Model,
+				BaseURL:  baseURL,
+			})
+			if err != nil {
+				return err
+			}
 
-			// 调用 Claude API（带 spinner）
+			// 调用 AI API（带 spinner）
 			s2 := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
-			s2.Suffix = "  正在调用 Claude API 生成日报..."
+			s2.Suffix = fmt.Sprintf("  正在调用 %s API 生成日报...", provider)
 			s2.Writer = os.Stderr
 			s2.Start()
 			result, err := aiClient.CreateMessage(ctx, prompt)
 			s2.Stop()
 			if err != nil {
-				return fmt.Errorf("调用 Claude API 失败: %w", err)
+				return fmt.Errorf("调用 %s API 失败: %w", provider, err)
 			}
 			fmt.Fprintln(os.Stdout, result)
 		} else {
