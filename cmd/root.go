@@ -20,6 +20,34 @@ import (
 	"github.com/miclle/gh-report/report"
 )
 
+// ReportType 表示报告类型。
+type ReportType string
+
+const (
+	// ReportDaily 日报，默认拉取最近 1 天数据。
+	ReportDaily ReportType = "daily"
+	// ReportWeekly 周报，默认拉取最近 14 天数据。
+	ReportWeekly ReportType = "weekly"
+	// ReportMonthly 月报，默认拉取最近 60 天数据。
+	ReportMonthly ReportType = "monthly"
+	// ReportYearly 年报，默认拉取最近 730 天数据。
+	ReportYearly ReportType = "yearly"
+)
+
+// defaultDays 返回指定报告类型的默认数据拉取天数。
+func defaultDays(rt ReportType) int {
+	switch rt {
+	case ReportWeekly:
+		return 14
+	case ReportMonthly:
+		return 60
+	case ReportYearly:
+		return 730
+	default:
+		return 1
+	}
+}
+
 // Config 表示 YAML 配置文件的结构。
 type Config struct {
 	Token string   `yaml:"token"` // GitHub Token（可选，也可通过 GITHUB_TOKEN 环境变量设置）
@@ -62,36 +90,47 @@ var rootCmd = &cobra.Command{
 	Long: `GitHub 仓库活动报告生成工具。
 
 通过 GitHub API 获取指定仓库的 Issue、Pull Request、评论、Review 以及
-Projects v2 迭代信息，生成结构化的工作报告。支持 CSV 原始数据输出和
-Summary 日报模式，并可通过 AI API（支持 Anthropic Claude 和 OpenAI）直接生成工作日报。`,
-	Example: `  # 使用配置文件生成报告
+Projects v2 迭代信息，生成结构化的工作报告。支持日报、周报、月报、年报，
+提供 CSV 原始数据输出和 Summary 模式，并可通过 AI API（支持 Anthropic
+Claude 和 OpenAI）直接生成报告。
+
+不指定子命令时默认生成日报。`,
+	Example: `  # 使用配置文件生成日报（默认）
   gh-report -c config.yaml
 
-  # 指定仓库，查看最近 7 天
-  gh-report -r owner/repo1,owner/repo2 -d 7 -u mylogin
+  # 生成周报（默认拉取最近 14 天数据）
+  gh-report weekly -c config.yaml -f summary --ai
+
+  # 生成月报（默认拉取最近 60 天数据）
+  gh-report monthly -c config.yaml -f summary --ai
+
+  # 生成年报（默认拉取最近 730 天数据）
+  gh-report yearly -c config.yaml -f summary --ai
+
+  # 指定仓库，自定义天数
+  gh-report weekly -r owner/repo1,owner/repo2 -d 21 -u mylogin
 
   # 生成摘要（可粘贴给 AI）
   gh-report -c config.yaml -f summary
-
-  # 调用 AI API 直接生成日报（默认使用 Anthropic Claude）
-  gh-report -c config.yaml -f summary --ai
 
   # 使用 OpenAI 生成日报
   gh-report -c config.yaml -f summary --ai --ai-provider openai`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	RunE:          runReport,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runReportWithType(cmd, ReportDaily)
+	},
 }
 
 func init() {
-	f := rootCmd.Flags()
+	f := rootCmd.PersistentFlags()
 	f.StringP("config", "c", "", "YAML 配置文件路径")
 	f.StringP("repos", "r", "", "仓库列表，逗号分隔（owner/repo 格式）")
 	f.IntP("days", "d", 0, "查看最近几天的活动")
 	f.StringP("user", "u", "", "按用户过滤")
 	f.String("token", "", "GitHub Token（默认: $GITHUB_TOKEN）")
 	f.StringP("format", "f", "", "输出格式: csv（默认）或 summary")
-	f.Bool("ai", false, "调用 AI API 生成日报")
+	f.Bool("ai", false, "调用 AI API 生成报告")
 	f.String("ai-provider", "", "AI 服务提供商: anthropic（默认）或 openai")
 	f.String("ai-key", "", "AI API Key（默认: 按 provider 查环境变量）")
 	f.String("ai-base-url", "", "AI API Base URL")
@@ -113,8 +152,8 @@ func Execute() {
 	}
 }
 
-// runReport 是根命令的主逻辑，负责加载配置、获取数据、生成报告。
-func runReport(cmd *cobra.Command, args []string) error {
+// runReportWithType 是报告生成的通用逻辑，接受报告类型参数。
+func runReportWithType(cmd *cobra.Command, reportType ReportType) error {
 	// 加载配置文件
 	var cfg Config
 	configFile, _ := cmd.Flags().GetString("config")
@@ -169,9 +208,9 @@ func runReport(cmd *cobra.Command, args []string) error {
 		cfg.Model, _ = cmd.Flags().GetString("model")
 	}
 
-	// 应用默认值
+	// 应用默认值：按报告类型设置默认天数
 	if cfg.Days == 0 {
-		cfg.Days = 1
+		cfg.Days = defaultDays(reportType)
 	}
 
 	if len(cfg.Repos) == 0 {
@@ -272,7 +311,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			prompt := report.BuildSummaryPrompt(reports, since, now, cfg.User)
+			prompt := report.BuildSummaryPrompt(reports, since, now, cfg.User, report.ReportType(reportType))
 			aiClient, err := ai.NewClient(ai.Config{
 				Provider: provider,
 				APIKey:   apiKey,
@@ -284,8 +323,9 @@ func runReport(cmd *cobra.Command, args []string) error {
 			}
 
 			// 调用 AI API（带 spinner）
+			reportName := reportTypeLabel(reportType)
 			s2 := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
-			s2.Suffix = fmt.Sprintf("  正在调用 %s API 生成日报...", provider)
+			s2.Suffix = fmt.Sprintf("  正在调用 %s API 生成%s...", provider, reportName)
 			s2.Writer = os.Stderr
 			s2.Start()
 			result, err := aiClient.CreateMessage(ctx, prompt)
@@ -295,13 +335,27 @@ func runReport(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Fprintln(os.Stdout, result)
 		} else {
-			report.PrintSummaryData(os.Stdout, reports, since, now, cfg.User)
+			report.PrintSummaryData(os.Stdout, reports, since, now, cfg.User, report.ReportType(reportType))
 		}
 	default:
 		report.Print(os.Stdout, reports, since, now)
 	}
 
 	return nil
+}
+
+// reportTypeLabel 返回报告类型的中文显示名称。
+func reportTypeLabel(rt ReportType) string {
+	switch rt {
+	case ReportWeekly:
+		return "周报"
+	case ReportMonthly:
+		return "月报"
+	case ReportYearly:
+		return "年报"
+	default:
+		return "日报"
+	}
 }
 
 // progressBars 通过 mpb 多进度条实现 report.Progress 接口。

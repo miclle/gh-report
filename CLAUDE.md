@@ -22,7 +22,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 
 **Packages**:
 - `main` — Entry point, calls `cmd.Execute()`
-- `cmd` — Cobra CLI commands (`root.go`: root command + flags + config loading + mpb progress bars; `version.go`: version subcommand)
+- `cmd` — Cobra CLI commands (`root.go`: root command + flags + config loading + mpb progress bars; `daily.go`/`weekly.go`/`monthly.go`/`yearly.go`: 报告类型子命令; `version.go`: version subcommand)
 - `ai` — 统一 AI 客户端接口，支持 Anthropic Claude 和 OpenAI（手工 HTTP 实现，无 SDK 依赖）
 - `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
 - `report` — Data collection (`collector.go` with `Progress` interface for UI feedback), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
@@ -34,7 +34,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 **Key env vars**: `GITHUB_TOKEN`, `AI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
 
 **Detailed docs**:
-- [docs/report-rules.md](docs/report-rules.md) — 报告业务规则（今日工作/明日计划的纳入排除规则、状态映射）
+- [docs/report-rules.md](docs/report-rules.md) — 报告业务规则（报告类型、工作/计划条目的纳入排除规则、状态映射）
 - [docs/report-generation.md](docs/report-generation.md) — 报告生成技术文档（数据流、并发模型、过滤层次）
 
 ## Conventions
