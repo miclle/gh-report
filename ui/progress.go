@@ -167,8 +167,8 @@ func (p *Progress) Stop() {
 	// 显示光标
 	fmt.Fprint(os.Stderr, "\033[?25h")
 
-	// 清除进度条区域
-	fmt.Fprint(os.Stderr, "\r\033[J")
+	// 清除进度条区域并添加空行分隔
+	fmt.Fprint(os.Stderr, "\r\033[J\n")
 }
 
 // ProgressWrapper 包装 Progress 实现 report.Progress 接口。
