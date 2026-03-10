@@ -8,13 +8,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 )
 
-// 仓库名称样式
-var repoNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+// 样式定义
+var (
+	repoNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	barFillStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // 绿色
+	barEmptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // 灰色
+)
+
+const barWidth = 10
 
 // repoProgress 单个仓库的进度状态。
 type repoProgress struct {
@@ -26,33 +31,22 @@ type repoProgress struct {
 type Progress struct {
 	repos      []string
 	progresses []repoProgress
-	bars       []progress.Model
 	mu         sync.Mutex
 	rendered   bool
 	isTerm     bool
-	lineCount  int
 }
 
 // NewProgress 创建新的进度显示组件。
 func NewProgress(repos []string) *Progress {
-	bars := make([]progress.Model, len(repos))
 	progresses := make([]repoProgress, len(repos))
-
 	for i := range repos {
-		bars[i] = progress.New(
-			progress.WithDefaultGradient(),
-			progress.WithWidth(30),
-			progress.WithoutPercentage(),
-		)
 		progresses[i] = repoProgress{total: 6, current: 0}
 	}
 
 	return &Progress{
 		repos:      repos,
 		progresses: progresses,
-		bars:       bars,
 		isTerm:     term.IsTerminal(int(os.Stderr.Fd())),
-		lineCount:  1 + len(repos),
 	}
 }
 
@@ -109,6 +103,20 @@ func (p *Progress) Start() *ProgressWrapper {
 	return &ProgressWrapper{p}
 }
 
+// renderBar 渲染单行进度条。
+func renderBar(percent float64) string {
+	filled := int(percent * barWidth)
+	if filled > barWidth {
+		filled = barWidth
+	}
+	empty := barWidth - filled
+
+	fill := barFillStyle.Render(strings.Repeat("█", filled))
+	emp := barEmptyStyle.Render(strings.Repeat("░", empty))
+
+	return fill + emp
+}
+
 // render 渲染进度条。
 func (p *Progress) render() {
 	if !p.isTerm {
@@ -124,7 +132,6 @@ func (p *Progress) render() {
 	}
 
 	// 移动光标回到进度区域开头
-	// 先移动到行首，然后向上移动 N 行
 	lineCount := 1 + len(p.repos)
 	fmt.Fprintf(os.Stderr, "\r\033[%dA", lineCount)
 
@@ -142,7 +149,7 @@ func (p *Progress) render() {
 		repoName := fmt.Sprintf("%-*s", maxRepoWidth, repo)
 		b.WriteString(repoNameStyle.Render(repoName))
 		b.WriteString("  ")
-		b.WriteString(p.bars[i].ViewAs(percent))
+		b.WriteString(renderBar(percent))
 		b.WriteString(fmt.Sprintf(" %5.1f%% (%d/%d)", percent*100, pr.current, pr.total))
 		b.WriteString("\033[K\n") // 清除行末尾
 	}
@@ -160,7 +167,6 @@ func (p *Progress) Stop() {
 	fmt.Fprint(os.Stderr, "\033[?25h")
 
 	// 清除进度条区域
-	// 移动光标到进度区域开头，然后清除
 	fmt.Fprint(os.Stderr, "\r\033[J")
 }
 
