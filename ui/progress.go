@@ -19,7 +19,7 @@ var (
 	barEmptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // 灰色
 )
 
-const barWidth = 20
+const barWidth = 40
 
 // repoProgress 单个仓库的进度状态。
 type repoProgress struct {
@@ -113,7 +113,7 @@ func renderBar(percent float64) string {
 
 	// 使用简单的 ASCII 字符，高度最小
 	fill := barFillStyle.Render(strings.Repeat("=", filled))
-	emp := barEmptyStyle.Render(strings.Repeat("-", empty))
+	emp := barEmptyStyle.Render(strings.Repeat("=", empty))
 
 	return fill + emp
 }
