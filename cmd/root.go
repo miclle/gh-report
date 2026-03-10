@@ -8,16 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 	"gopkg.in/yaml.v3"
 
 	"github.com/miclle/gh-report/ai"
 	"github.com/miclle/gh-report/github"
 	"github.com/miclle/gh-report/report"
+	"github.com/miclle/gh-report/ui"
 )
 
 // ReportType 表示报告类型。
@@ -168,9 +166,13 @@ func runReportWithType(cmd *cobra.Command, reportType ReportType) error {
 	// CLI flags 覆盖配置文件值（仅覆盖显式指定的字段）
 	if cmd.Flags().Changed("repos") {
 		reposStr, _ := cmd.Flags().GetString("repos")
-		cfg.Repos = nil
-		for _, r := range strings.Split(reposStr, ",") {
-			cfg.Repos = append(cfg.Repos, strings.TrimSpace(r))
+		parts := strings.Split(reposStr, ",")
+		cfg.Repos = make([]string, 0, len(parts))
+		for _, r := range parts {
+			r = strings.TrimSpace(r)
+			if r != "" {
+				cfg.Repos = append(cfg.Repos, r)
+			}
 		}
 	}
 	if cmd.Flags().Changed("days") {
@@ -208,6 +210,11 @@ func runReportWithType(cmd *cobra.Command, reportType ReportType) error {
 		cfg.Model, _ = cmd.Flags().GetString("model")
 	}
 
+	return runReportWithConfig(reportType, &cfg)
+}
+
+// runReportWithConfig 使用配置运行报告生成。
+func runReportWithConfig(reportType ReportType, cfg *Config) error {
 	// 应用默认值：按报告类型设置默认天数
 	if cfg.Days == 0 {
 		cfg.Days = defaultDays(reportType)
@@ -235,35 +242,17 @@ func runReportWithType(cmd *cobra.Command, reportType ReportType) error {
 		User:  cfg.User,
 	}
 
-	// 获取 GitHub 数据（带多进度条）
-	// 初始 total=6：4 个基础 API 调用 + 1 完成步 + 1 Projects 关联步
-	p := mpb.New(mpb.WithOutput(os.Stderr))
-	pb := &progressBars{bars: make([]*mpb.Bar, len(opts.Repos))}
-	for i, repoName := range opts.Repos {
-		pb.bars[i] = p.New(6,
-			mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(".").Rbound("]"),
-			mpb.BarWidth(30),
-			mpb.PrependDecorators(
-				decor.Name(color.CyanString(repoName)+" ", decor.WCSyncSpaceR),
-			),
-			mpb.AppendDecorators(
-				decor.Percentage(decor.WCSyncSpace),
-				decor.OnComplete(decor.Spinner(nil, decor.WC{W: 2}), " "+color.GreenString("✓")),
-			),
-		)
-	}
-	reports, err := report.Collect(ctx, client, opts, pb)
+	// 使用新的 UI 进度组件获取 GitHub 数据
+	progress := ui.NewProgress(opts.Repos)
+	wrapper := progress.Start()
+	reports, err := report.Collect(ctx, client, opts, wrapper)
 	if err != nil {
-		// 出错时中止未完成的进度条，确保 p.Wait() 不会阻塞
-		for _, bar := range pb.bars {
-			bar.Abort(false)
-		}
-	}
-	p.Wait()
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
+		progress.SetError(err)
+		progress.Stop()
 		return fmt.Errorf("获取数据失败: %w", err)
 	}
+	progress.Complete()
+	progress.Stop()
 
 	now := time.Now()
 	since := now.AddDate(0, 0, -cfg.Days)
@@ -322,14 +311,12 @@ func runReportWithType(cmd *cobra.Command, reportType ReportType) error {
 				return err
 			}
 
-			// 调用 AI API（带 spinner）
+			// 使用新的 UI Spinner 调用 AI API
 			reportName := reportTypeLabel(reportType)
-			s2 := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
-			s2.Suffix = fmt.Sprintf("  正在调用 %s API 生成%s...", provider, reportName)
-			s2.Writer = os.Stderr
-			s2.Start()
-			result, err := aiClient.CreateMessage(ctx, prompt)
-			s2.Stop()
+			spinnerText := fmt.Sprintf("正在调用 %s API 生成%s...", provider, reportName)
+			result, err := ui.RunSpinnerWithResult(spinnerText, func() (string, error) {
+				return aiClient.CreateMessage(ctx, prompt)
+			})
 			if err != nil {
 				return fmt.Errorf("调用 %s API 失败: %w", provider, err)
 			}
@@ -356,19 +343,4 @@ func reportTypeLabel(rt ReportType) string {
 	default:
 		return "日报"
 	}
-}
-
-// progressBars 通过 mpb 多进度条实现 report.Progress 接口。
-type progressBars struct {
-	bars []*mpb.Bar
-}
-
-// SetTotal 设置指定仓库进度条的总步骤数。
-func (pb *progressBars) SetTotal(repoIndex int, total int) {
-	pb.bars[repoIndex].SetTotal(int64(total), false)
-}
-
-// Increment 报告指定仓库进度条完成一个步骤。
-func (pb *progressBars) Increment(repoIndex int) {
-	pb.bars[repoIndex].Increment()
 }
