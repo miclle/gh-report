@@ -111,9 +111,9 @@ func renderBar(percent float64) string {
 	}
 	empty := barWidth - filled
 
-	// 使用简单的 ASCII 字符，高度最小
+	// 全部使用 = 号，通过颜色区分
 	fill := barFillStyle.Render(strings.Repeat("=", filled))
-	emp := barEmptyStyle.Render(strings.Repeat("-", empty))
+	emp := barEmptyStyle.Render(strings.Repeat("=", empty))
 
 	return fill + emp
 }
