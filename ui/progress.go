@@ -4,8 +4,10 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -91,6 +93,15 @@ func (p *Progress) Start() *ProgressWrapper {
 		fmt.Fprintln(os.Stderr, "正在获取 GitHub 数据...")
 		return &ProgressWrapper{p}
 	}
+
+	// 注册信号处理，确保 Ctrl+C 时恢复光标
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		p.Stop()
+		os.Exit(1)
+	}()
 
 	// 隐藏光标
 	fmt.Fprint(os.Stderr, "\033[?25l")
