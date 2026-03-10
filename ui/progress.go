@@ -19,7 +19,7 @@ var (
 	barEmptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // 灰色
 )
 
-const barWidth = 10
+const barWidth = 20
 
 // repoProgress 单个仓库的进度状态。
 type repoProgress struct {
