@@ -8,10 +8,13 @@ LDFLAGS := -ldflags "-X github.com/miclle/gh-report/cmd.Version=$(VERSION) \
                      -X github.com/miclle/gh-report/cmd.Commit=$(COMMIT) \
                      -X github.com/miclle/gh-report/cmd.BuildDate=$(DATE)"
 
-.PHONY: run build clean install
+.PHONY: run build clean install weekly
 
 run: build
 	./$(BIN) --config $(CONFIG)
+
+weekly: build
+	./$(BIN) weekly --config $(CONFIG) --days 14
 
 build:
 	go build $(LDFLAGS) -o $(BIN) .
