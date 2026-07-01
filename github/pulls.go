@@ -11,16 +11,21 @@ import (
 // 当遇到更新时间早于 since 的 PR 时停止获取。
 func (c *Client) ListPullRequests(ctx context.Context, owner, repo string, since time.Time) ([]*gh.PullRequest, error) {
 	opts := &gh.PullRequestListOptions{
-		State:     "all",
-		Sort:      "updated",
-		Direction: "desc",
+		State:       "all",
+		Sort:        "updated",
+		Direction:   "desc",
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
 
 	var all []*gh.PullRequest
 	for {
-		prs, resp, err := c.REST.PullRequests.List(ctx, owner, repo, opts)
-		if err != nil {
+		var prs []*gh.PullRequest
+		var resp *gh.Response
+		if err := c.doGitHubRequest(ctx, func() error {
+			var err error
+			prs, resp, err = c.REST.PullRequests.List(ctx, owner, repo, opts)
+			return err
+		}); err != nil {
 			return nil, err
 		}
 
@@ -45,8 +50,13 @@ func (c *Client) ListReviews(ctx context.Context, owner, repo string, prNumber i
 
 	var all []*gh.PullRequestReview
 	for {
-		reviews, resp, err := c.REST.PullRequests.ListReviews(ctx, owner, repo, prNumber, opts)
-		if err != nil {
+		var reviews []*gh.PullRequestReview
+		var resp *gh.Response
+		if err := c.doGitHubRequest(ctx, func() error {
+			var err error
+			reviews, resp, err = c.REST.PullRequests.ListReviews(ctx, owner, repo, prNumber, opts)
+			return err
+		}); err != nil {
 			return nil, err
 		}
 		all = append(all, reviews...)
@@ -61,15 +71,20 @@ func (c *Client) ListReviews(ctx context.Context, owner, repo string, prNumber i
 // ListReviewComments 获取仓库中自指定时间以来的所有 PR Review 评论（代码行级别评论）。
 func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, since time.Time) ([]*gh.PullRequestComment, error) {
 	opts := &gh.PullRequestListCommentsOptions{
-		Since: since,
-		Sort:  "updated",
+		Since:       since,
+		Sort:        "updated",
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
 
 	var all []*gh.PullRequestComment
 	for {
-		comments, resp, err := c.REST.PullRequests.ListComments(ctx, owner, repo, 0, opts)
-		if err != nil {
+		var comments []*gh.PullRequestComment
+		var resp *gh.Response
+		if err := c.doGitHubRequest(ctx, func() error {
+			var err error
+			comments, resp, err = c.REST.PullRequests.ListComments(ctx, owner, repo, 0, opts)
+			return err
+		}); err != nil {
 			return nil, err
 		}
 		all = append(all, comments...)

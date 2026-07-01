@@ -23,14 +23,32 @@ type Client struct {
 	// httpClient 复用 go-github 的 HTTP 客户端（携带认证信息），用于 GraphQL 请求。
 	httpClient *http.Client
 	token      string
+	apiSlots   chan struct{}
 }
 
 // NewClient 创建一个新的 GitHub API 客户端。
 func NewClient(token string) *Client {
-	c := &Client{token: token}
+	c := &Client{
+		token:    token,
+		apiSlots: make(chan struct{}, 3),
+	}
 	c.REST = gh.NewClient(nil).WithAuthToken(token)
 	c.httpClient = c.REST.Client()
 	return c
+}
+
+func (c *Client) doGitHubRequest(ctx context.Context, op func() error) error {
+	_, err := withRetry(ctx, func() (struct{}, error) {
+		select {
+		case c.apiSlots <- struct{}{}:
+			defer func() { <-c.apiSlots }()
+		case <-ctx.Done():
+			return struct{}{}, ctx.Err()
+		}
+
+		return struct{}{}, op()
+	})
+	return err
 }
 
 // graphqlRequest 表示 GraphQL 请求体。
@@ -54,14 +72,18 @@ func (c *Client) GraphQL(ctx context.Context, query string, variables map[string
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", graphqlURL, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	var resp *http.Response
+	if err := c.doGitHubRequest(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, "POST", graphqlURL, bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
+		respErr := error(nil)
+		resp, respErr = c.httpClient.Do(req)
+		return respErr
+	}); err != nil {
 		return err
 	}
 	defer resp.Body.Close()
