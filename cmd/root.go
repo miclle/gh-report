@@ -237,9 +237,10 @@ func runReportWithConfig(reportType ReportType, cfg *Config) error {
 	ctx := context.Background()
 
 	opts := report.Options{
-		Repos: cfg.Repos,
-		Days:  cfg.Days,
-		User:  cfg.User,
+		Repos:            cfg.Repos,
+		Days:             cfg.Days,
+		User:             cfg.User,
+		IncludeTaskLinks: cfg.Format == "summary",
 	}
 
 	// 使用新的 UI 进度组件获取 GitHub 数据

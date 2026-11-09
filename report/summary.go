@@ -106,18 +106,20 @@ func workTimeCutoff(rt ReportType) time.Time {
 
 // WorkItem 表示一条工作活动。
 type WorkItem struct {
-	Type       string // "pr", "issue", "comment", "review"
-	Repo       string // "owner/repo"
-	Number     int
-	Title      string
-	State      string // "merged", "open", "closed", "draft"
-	URL        string
-	ReviewInfo string // PR 的 review 摘要
-	Date       string // 活动日期，格式 "2006-01-02"
+	Type        string // "pr", "issue", "comment", "review"
+	Repo        string // "owner/repo"
+	Number      int
+	Title       string
+	State       string // "merged", "open", "closed", "draft"
+	URL         string
+	ReviewInfo  string // PR 的 review 摘要
+	Date        string // 活动日期，格式 "2006-01-02"
+	ContextOnly bool   // 仅提供关联背景，不代表用户本期活动
 }
 
 // PlanItem 表示明日计划的一条项目。
 type PlanItem struct {
+	Type   string // "pr" 或 "issue"
 	Repo   string
 	Number int
 	Title  string
@@ -283,6 +285,7 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 			}
 			seen[key] = len(items)
 			items = append(items, PlanItem{
+				Type:   "pr",
 				Repo:   fullRepo,
 				Number: pr.GetNumber(),
 				Title:  pr.GetTitle(),
@@ -304,7 +307,7 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 				if item.Iteration != relevant.Current.Title {
 					continue
 				}
-				if !strings.Contains(item.URL, fullRepo) {
+				if !projectItemInRepo(item.URL, fullRepo) {
 					continue
 				}
 				// 指定用户时，只纳入 Assignees 包含该用户的项目
@@ -327,6 +330,7 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 				}
 				seen[key] = len(items)
 				items = append(items, PlanItem{
+					Type:   projectItemType(item),
 					Repo:   fullRepo,
 					Number: item.Number,
 					Title:  item.Title,
@@ -373,11 +377,16 @@ func buildPromptTemplate(since, until time.Time, user string, rt ReportType) str
 	fmt.Fprintf(&sb, "用户: %s\n\n", user)
 	sb.WriteString("请严格按照以下格式输出，不要添加任何额外内容:\n\n")
 	fmt.Fprintf(&sb, "%s\n", labels.workTitle)
-	sb.WriteString("<工作描述>, <状态>, <URL>\n\n")
+	sb.WriteString("<任务描述>, <各来源状态>, <所有来源的完整 URL>\n\n")
 	fmt.Fprintf(&sb, "%s\n", labels.planTitle)
-	sb.WriteString("<计划描述>, <URL>\n\n")
+	sb.WriteString("<计划描述>, <所有来源的完整 URL>\n\n")
 	sb.WriteString("格式要求:\n")
-	sb.WriteString("- 每条记录一行\n")
+	sb.WriteString("- 每个任务一行；输入已经按 GitHub 明确关联归并，不再按标题相似度合并任务\n")
+	sb.WriteString("- 保留每条任务的全部完整 URL，包括 Issue 和每个 PR；直接输出 URL，不使用 Markdown 链接、尖括号或反引号包装，不得改成裸编号或省略链接；URL 与相邻文字用空格分隔\n")
+	sb.WriteString("- 一个 PR 可能被多个独立任务引用，不要因此合并这些任务\n")
+	sb.WriteString("- 各 Issue 和 PR 的状态分别表述；PR 已合并不代表任务完成、已发布或已验收，PR 关闭也不代表已合并\n")
+	sb.WriteString("- 标记为仅关联背景的 Issue 不算用户本期活动，不得推断用户创建、关闭或完成该 Issue\n")
+	sb.WriteString("- 本期工作与后续计划分别归并，同一任务可同时出现在两个部分\n")
 	sb.WriteString("- PR 状态映射: merged→已合并, open(有 review)→已提交(审查中), open(无 review)→已提交, draft→草稿, closed→已关闭\n")
 	sb.WriteString("- Issue 状态: open→进行中, closed→已关闭\n")
 	sb.WriteString("- 评论和 review 类型的活动描述参考格式: 参与 Issue #N / Review PR #N 讨论\n")
@@ -391,59 +400,11 @@ func buildPromptTemplate(since, until time.Time, user string, rt ReportType) str
 	return sb.String()
 }
 
-// formatWorkData 将工作数据格式化为文本。
-// 非日报模式下，在标题前加上活动日期。
-func formatWorkData(items []WorkItem, rt ReportType) string {
-	if len(items) == 0 {
-		return "（无工作数据）\n"
-	}
-	showDate := rt != ReportDaily
-	var sb strings.Builder
-	for _, item := range items {
-		datePrefix := ""
-		if showDate && item.Date != "" {
-			datePrefix = item.Date + " "
-		}
-		switch item.Type {
-		case "pr":
-			fmt.Fprintf(&sb, "- [PR] %s#%d %s%s | 状态: %s | Review: %s | %s\n",
-				item.Repo, item.Number, datePrefix, item.Title, item.State, item.ReviewInfo, item.URL)
-		case "issue":
-			fmt.Fprintf(&sb, "- [Issue] %s#%d %s%s | 状态: %s | %s\n",
-				item.Repo, item.Number, datePrefix, item.Title, item.State, item.URL)
-		case "comment":
-			fmt.Fprintf(&sb, "- [Comment] %s#%d %s%s | %s\n",
-				item.Repo, item.Number, datePrefix, item.Title, item.URL)
-		case "review":
-			fmt.Fprintf(&sb, "- [Review] %s#%d %s%s | %s\n",
-				item.Repo, item.Number, datePrefix, item.Title, item.URL)
-		}
-	}
-	return sb.String()
-}
-
-// formatPlanData 将计划数据格式化为文本。
-func formatPlanData(items []PlanItem) string {
-	if len(items) == 0 {
-		return "（无计划数据）\n"
-	}
-	var sb strings.Builder
-	for _, item := range items {
-		status := ""
-		if item.Status != "" {
-			status = fmt.Sprintf(" | Status: %s", item.Status)
-		}
-		sb.WriteString(fmt.Sprintf("- [%s] %s#%d %s%s | %s\n",
-			item.Source, item.Repo, item.Number, item.Title, status, item.URL))
-	}
-	return sb.String()
-}
-
 // PrintSummaryData 输出结构化的工作和计划数据，以及可供手动粘贴给 AI 的 Prompt 模板。
 func PrintSummaryData(w io.Writer, reports []RepoReport, since, until time.Time, user string, rt ReportType) {
 	labels := labelsForType(rt)
-	workItems := extractWorkItems(reports, user, rt)
-	planItems := extractPlanItems(reports, user)
+	workItems := groupTaskItems(extractWorkItems(reports, user, rt), reports)
+	planItems := groupPlanItems(extractPlanItems(reports, user), reports)
 
 	// 输出结构化数据
 	fmt.Fprintf(w, "========== %s ==========\n", labels.workTitle)
@@ -461,13 +422,13 @@ func PrintSummaryData(w io.Writer, reports []RepoReport, since, until time.Time,
 
 // BuildSummaryPrompt 构建完整的 Prompt 文本，供 API 调用或手动粘贴。
 func BuildSummaryPrompt(reports []RepoReport, since, until time.Time, user string, rt ReportType) string {
-	workItems := extractWorkItems(reports, user, rt)
-	planItems := extractPlanItems(reports, user)
+	workItems := groupTaskItems(extractWorkItems(reports, user, rt), reports)
+	planItems := groupPlanItems(extractPlanItems(reports, user), reports)
 	return buildSummaryPromptFromItems(workItems, planItems, since, until, user, rt)
 }
 
 // buildSummaryPromptFromItems 根据已提取的工作和计划条目构建 Prompt 文本。
-func buildSummaryPromptFromItems(workItems []WorkItem, planItems []PlanItem, since, until time.Time, user string, rt ReportType) string {
+func buildSummaryPromptFromItems(workItems []reportTask, planItems []reportTask, since, until time.Time, user string, rt ReportType) string {
 	labels := labelsForType(rt)
 	var sb strings.Builder
 	sb.WriteString(buildPromptTemplate(since, until, user, rt))

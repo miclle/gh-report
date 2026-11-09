@@ -11,7 +11,7 @@ CLI 输入 (flags / YAML 配置 / 环境变量)
     ↓
 创建 GitHub 客户端 + 初始化进度条
     ↓
-report.Collect()  ─── 并发获取数据 ──→ []RepoReport
+report.Collect()  ─── 并发获取数据 + 可选任务关联 ──→ []RepoReport
     ↓
 根据输出格式分发：
 ├─ csv     → report.Print()              → CSV 分段输出
@@ -101,6 +101,17 @@ HTTP 并发数由 `--concurrency` 控制（默认 8），通过 `semaphoreTransp
   2. 对每个项目并发获取所有 item（标题、编号、URL、状态、迭代、Assignees）
 - 无时间过滤，获取全量数据
 
+### Issue–PR 关联（Summary / AI）
+
+CLI 在 `format=summary` 时设置 `Options.IncludeTaskLinks`；CSV 不增加关联查询。
+
+Projects 关联到仓库后，`collectTaskLinks` 为已采集的 PR，以及当前迭代中通过计划过滤的 Project PR，调用 `github.ListClosingIssues`。同仓库同编号只查询一次，各请求复用现有 HTTP 并发限制。完成此阶段后才推进仓库进度的最后一步。
+
+- GraphQL 字段：`pullRequest.closingIssuesReferences(first: 100, after: cursor, excludeUserLinked: false)`。
+- 获取每个 Issue 的仓库全名、编号、标题、URL、状态，按游标读取全部分页。
+- 任意一页失败、PR 不可访问或关联数据不完整：丢弃该 PR 的全部关联结果，向 stderr 输出警告，报告继续保留独立条目；上下文取消则返回错误。
+- 关联结果存入 `RepoReport.PullRequestIssues`，不改写原始 Issues、PullRequests 或 Projects。
+
 ### Collector 层过滤
 
 获取原始数据后，collector 做第一轮过滤：
@@ -137,6 +148,7 @@ RepoReport {
     ReviewComments []*gh.PullRequestComment            // 过滤后的 Review 评论
     Reviews        map[int][]*gh.PullRequestReview    // PR 编号 → Review 列表
     Projects       []github.Project                   // 关联的 Projects v2
+    PullRequestIssues map[int][]github.LinkedIssue     // PR → 明确关联 Issue
 }
 ```
 
@@ -240,6 +252,18 @@ Project Item 纳入计划条目的条件（全部满足）：
 | Review 评论 | `owner/repo#pr_number` | 同一 PR 在时间范围内只记一条 |
 | 计划条目 | `owner/repo#number` | open_pr 与 project_item 合并去重 |
 
+### 任务归并层（report/tasks.go）
+
+`extractWorkItems` 和 `extractPlanItems` 仍负责活动筛选；筛选后分别经过 `groupTaskItems` / `groupPlanItems`，生成 `reportTask`（任务标题 + 多个 `WorkItem` 来源）。Summary 和 AI Prompt 使用同一份归并和格式化逻辑。
+
+以不区分大小写的完整 `owner/repo#number` 标识 Issue 任务。归并只沿 PR→Issue 单向关系进行，不用连通分量把共享 PR 的多个 Issue 合成一个任务。每个任务内同一来源只保留一次；没有关系的 PR、Issue、评论和 Review 保持独立。
+
+输入中已有的 Issue 保留原始活动日期和状态。关联 Issue 不在筛选结果中时，以 `ContextOnly=true` 补充背景，不携带活动日期，也不增加本期贡献。未通过筛选的 PR 不作为来源补入。
+
+`formatWorkData` 为每个来源直接输出完整 URL 并分别展示状态；多 PR 任务保留实现标题和 Review 摘要，非日报保留各来源日期。`formatPlanData` 保留全部链接，但不输出状态或优先级。URL 保留完整仓库路径和评论锚点，与相邻文字用空格分隔，不添加 Markdown 包装。
+
+Project Item 的归属按 URL 中的完整仓库路径匹配，避免仓库名前缀相同导致误归并。
+
 ### 用户自身 PR 评论去重
 
 `prAuthorKeys` 收集用户作为作者的**所有 PR 编号**（不限日期），确保用户在自己 PR 上的评论和 review 不会单独列为"讨论"条目。只有在**他人 PR** 上的评论才会作为 comment/review 类型列出。
@@ -265,8 +289,8 @@ AI 模式在 Summary 模式基础上，将结构化数据 + Prompt 模板发送�
 ```
 Prompt 结构：
 ├─ 指令模板（日期范围、用户、报告类型对应的输出格式要求）
-├─ 工作条目数据（格式化的 WorkItem 列表）
-└─ 计划条目数据（格式化的 PlanItem 列表）
+├─ 工作任务数据（归并后的 reportTask 列表，含所有来源链接和状态）
+└─ 计划任务数据（归并后的 reportTask 列表，含所有来源链接）
 ```
 
 Prompt 模板中的标题和角色根据报告类型自动调整：
@@ -274,6 +298,8 @@ Prompt 模板中的标题和角色根据报告类型自动调整：
 - 周报：工作周报助手、本周工作、下周计划
 - 月报：工作月报助手、本月工作、下月计划
 - 年报：年度总结助手、年度工作、下年计划
+
+Prompt 要求每个任务一行、保留全部完整 URL 并直接展示，不使用 Markdown 链接、尖括号或反引号包装，不按相似标题再次归并，不把关联背景算成本期工作，也不从 PR 合并推断发布或验收完成。
 
 AI API 调用参数：
 - Anthropic 端点：`POST {base_url}/v1/messages`

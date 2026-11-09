@@ -16,21 +16,23 @@ import (
 
 // RepoReport 保存单个仓库的所有收集数据。
 type RepoReport struct {
-	Owner          string                          // 仓库所有者
-	Repo           string                          // 仓库名称
-	Issues         []*gh.Issue                     // Issue 列表
-	PullRequests   []*gh.PullRequest               // Pull Request 列表
-	IssueComments  []*gh.IssueComment              // Issue 评论列表
-	ReviewComments []*gh.PullRequestComment         // PR Review 评论列表
-	Reviews        map[int][]*gh.PullRequestReview // PR Review 列表，以 PR 编号为键
-	Projects       []github.Project                // 关联的 Projects v2 项目
+	Owner             string                          // 仓库所有者
+	Repo              string                          // 仓库名称
+	Issues            []*gh.Issue                     // Issue 列表
+	PullRequests      []*gh.PullRequest               // Pull Request 列表
+	IssueComments     []*gh.IssueComment              // Issue 评论列表
+	ReviewComments    []*gh.PullRequestComment        // PR Review 评论列表
+	Reviews           map[int][]*gh.PullRequestReview // PR Review 列表，以 PR 编号为键
+	Projects          []github.Project                // 关联的 Projects v2 项目
+	PullRequestIssues map[int][]github.LinkedIssue    // PR 编号到明确关联 Issue 的映射
 }
 
 // Options 指定数据收集的参数。
 type Options struct {
-	Repos []string // 仓库列表，格式为 "owner/repo"
-	Days  int      // 查看最近几天的活动
-	User  string   // 按用户过滤（为空则不过滤）
+	Repos            []string // 仓库列表，格式为 "owner/repo"
+	Days             int      // 查看最近几天的活动
+	User             string   // 按用户过滤（为空则不过滤）
+	IncludeTaskLinks bool     // Summary/AI 模式补充任务关联，CSV 不增加查询
 }
 
 // Progress 报告数据收集进度的接口。
@@ -117,6 +119,13 @@ func Collect(ctx context.Context, client *github.Client, opts Options, progress 
 	// 关联 Projects 到对应仓库，并推进进度条最后一步
 	for i := range reports {
 		reports[i].Projects = orgProjects[reports[i].Owner]
+	}
+	if opts.IncludeTaskLinks {
+		if err := collectTaskLinks(ctx, client, reports, opts.User); err != nil {
+			return nil, err
+		}
+	}
+	for i := range reports {
 		if progress != nil {
 			progress.Increment(i)
 		}

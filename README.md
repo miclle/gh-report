@@ -15,6 +15,7 @@ GitHub 仓库活动报告生成工具。通过 GitHub API 获取指定仓库（�
 - **多种输出格式**：
   - `csv`（默认）— CSV 分段格式，展示原始活动数据
   - `summary` — 结构化的工作数据与计划数据及 Prompt 模板
+- **任务归并与链接** — Summary / AI 按 GitHub 明确关联合并 Issue 和 PR，保留全部来源的完整 URL 及独立状态
 - **AI 报告生成** — 通过 AI API（支持 Anthropic Claude 和 OpenAI）将活动数据自动整理为工作报告
 - **友好的终端体验** — 彩色错误提示、多仓库并发进度条、Shell 补全支持
 
@@ -268,18 +269,22 @@ own/repo1,Sprint Board,Sprint 2026-W09,Current,98,deploy(frontend): 沙箱管理
 
 输出结构化的工作和计划数据，标题根据报告类型自动调整（日报为"今日工作/明日计划"，周报为"本周工作/下周计划"，以此类推）：
 
-```
+```text
 ========== 今日工作 ==========
-- [PR] own/repo1#120 feat: 新增沙箱管理功能 | 状态: merged | Review: @bob APPROVED | https://...
-- [PR] own/repo1#122 fix: 修复连接超时问题 | 状态: open | Review: @bob COMMENTED | https://...
+- 新增沙箱管理功能 | https://github.com/own/repo1/issues/110 进行中 | https://github.com/own/repo1/pull/120 已合并
+- 修复连接超时问题 | https://github.com/own/repo1/pull/122 已提交(审查中)；Review: @bob COMMENTED
 
 ========== 明日计划 ==========
-- [open_pr] own/repo1#122 fix: 修复连接超时问题 | https://...
-- [project_item] own/repo1#101 Bug: 登录失败 | Status: In Progress | https://...
+- 新增沙箱管理功能 | https://github.com/own/repo1/issues/110
+- 修复连接超时问题 | https://github.com/own/repo1/pull/122
 
 ========== Prompt（复制以下内容粘贴给 AI）==========
 ...
 ```
+
+同一任务的描述只出现一次，Issue 和各 PR 的链接均保留。工作与计划分别归并；上例中 Issue #110 仍在当前迭代且未完成，因此仍可进入计划。PR 合并不会自动表示整个任务已完成。
+
+归并依据 GitHub 的明确关联，不通过相似标题或普通正文引用猜测。没有关联或关联查询失败时保留独立条目；不在活动范围内的关联 Issue 仅标注为背景。CSV 明细保持原有格式。详见[任务归并与链接规则](docs/report-rules.md#任务归并与链接)。
 
 ## 项目结构
 
@@ -304,11 +309,14 @@ gh-report/
 │   ├── types.go            # Projects v2 相关数据结构
 │   ├── issues.go           # Issue 和 Issue 评论获取
 │   ├── pulls.go            # PR、Review、Review 评论获取
-│   └── projects.go         # Projects v2 GraphQL 查询（迭代信息）
+│   ├── projects.go         # Projects v2 GraphQL 查询（迭代信息）
+│   └── links.go            # Issue–PR 明确关联查询
 ├── report/
 │   ├── collector.go        # 按仓库收集和聚合数据
 │   ├── printer.go          # CSV 格式化输出
-│   └── summary.go          # Summary 模式（工作条目 + 计划条目 + Prompt）
+│   ├── summary.go          # 工作和计划筛选、Prompt
+│   ├── task_links.go       # 关联采集与失败回退
+│   └── tasks.go            # 任务归并、多来源链接与状态展示
 └── docs/
     ├── report-rules.md     # 报告业务规则
     └── report-generation.md # 报告生成技术文档
