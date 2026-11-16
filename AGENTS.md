@@ -26,7 +26,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 - `ai` — 统一 AI 客户端接口，支持 Anthropic Codex 和 OpenAI（手工 HTTP 实现，无 SDK 依赖）
 - `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
 - `report` — Data collection (`collector.go` with `Progress` interface for UI feedback), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
-- `contribution` — 单仓库默认分支全历史贡献采集、身份聚合和 Table / CSV / JSON 输出，由 `contributors` 子命令调用；`commits` 子命令复用本地解析器，完全离线按邮箱统计提交和增删行数，默认不读取配置或 Token，支持 `--chart -f markdown -o report.md` 导出贡献者卡片和按周趋势 SVG，图表默认联网获取提交作者头像并嵌入图片，`--github-avatars=false` 可完全离线，头像模式可选 Token 用于认证；`contributors --local` 从本地 Git 读取 commits，Issue / PR 及身份关联仍走 API，独立于工作报告过滤与任务归并
+- `contribution` — 单仓库默认分支全历史贡献采集、身份聚合和 Table / CSV / JSON 输出，由 `contributors` 子命令调用；`commits` 子命令复用本地解析器，完全离线按邮箱统计提交和增删行数，不读取配置或 Token，支持 `--chart -f markdown -o report.md` 导出贡献者卡片和按周趋势 SVG，图表默认从 noreply 邮箱或 `--avatar-user email=username` 映射确定头像，直接下载并嵌入图片，不查询 API；`--github-avatars=false` 可完全离线；`contributors --local` 从本地 Git 读取 commits，Issue / PR 及身份关联仍走 API，独立于工作报告过滤与任务归并
 
 **Concurrency**: `report.Collect` uses three-level concurrency — org Projects vs repo data in parallel (separate WaitGroups), 4 API calls per repo in parallel, PR reviews in parallel. Progress is reported via the `Progress` interface (implemented by `cmd.progressBars` using mpb).
 

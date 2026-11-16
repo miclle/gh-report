@@ -3,7 +3,6 @@ package contribution
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"image"
 	"image/draw"
@@ -13,38 +12,50 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
-
-	gh "github.com/google/go-github/v69/github"
 )
 
-// LoadGitHubAvatars 为可关联的 Git 作者加载头像，token 可为空，不更改身份或统计。
+var avatarLoginPattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?(?:\[bot\])?$`)
+
+// ParseAvatarUsers 解析可重复的 email=username 映射，邮箱按提交身份规则规范化。
+func ParseAvatarUsers(entries []string) (map[string]string, error) {
+	users := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		separator := strings.LastIndex(entry, "=")
+		if separator < 1 {
+			return nil, fmt.Errorf("头像映射需要 email=username 格式: %q", entry)
+		}
+		email := strings.ToLower(strings.TrimSpace(entry[:separator]))
+		login := strings.ToLower(strings.TrimSpace(entry[separator+1:]))
+		local, domain, ok := strings.Cut(email, "@")
+		if !ok || local == "" || domain == "" || strings.ContainsAny(email, " \t\r\n") || strings.Contains(domain, "@") || !avatarLoginPattern.MatchString(login) {
+			return nil, fmt.Errorf("头像映射中的邮箱或 GitHub 用户名无效: %q", entry)
+		}
+		if previous, ok := users[email]; ok && previous != login {
+			return nil, fmt.Errorf("邮箱 %q 对应多个 GitHub 用户名", email)
+		}
+		users[email] = login
+	}
+	return users, nil
+}
+
+// LoadGitHubAvatars 根据 noreply 邮箱或显式映射直接下载头像，不调用 API、不读取 Token，不更改身份或统计。
 // 单个头像不可用时继续处理其他作者并返回首个错误；取消操作时由调用方终止报告。
-func LoadGitHubAvatars(ctx context.Context, report *CommitReport, token string) (int, error) {
+func LoadGitHubAvatars(ctx context.Context, report *CommitReport, users map[string]string) (int, error) {
 	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !githubImageHost(req.URL) || req.URL.Hostname() != via[0].URL.Hostname() {
+		if len(via) >= 5 || !githubImageHost(req.URL) {
 			return fmt.Errorf("头像请求重定向到不支持的地址")
 		}
 		return nil
 	}}
-	return loadGitHubAvatars(ctx, report, client, token)
+	return loadGitHubAvatars(ctx, report, client, users)
 }
 
-func loadGitHubAvatars(ctx context.Context, report *CommitReport, client *http.Client, token string) (int, error) {
-	report.Rules = append(report.Rules, "启用 GitHub 头像：联网查询提交作者并下载头像；身份及计数仍按原 Git 作者邮箱归并")
-	if len(report.Users) == 0 {
-		return 0, nil
-	}
-	local, err := openLocalRepository(ctx, report.LocalPath, "")
-	if err != nil {
-		return 0, err
-	}
-	parts := strings.SplitN(local.repo, "/", 2)
-	api := gh.NewClient(client)
-	if token != "" {
-		api = api.WithAuthToken(token)
-	}
+func loadGitHubAvatars(ctx context.Context, report *CommitReport, client *http.Client, users map[string]string) (int, error) {
+	report.Rules = append(report.Rules, "GitHub 头像按 noreply 邮箱或显式邮箱映射直接下载，不调用 API、不读取 Token；身份及计数仍按原 Git 作者邮箱归并")
 	images := make(map[string][]byte)
 	loaded := 0
 	var firstErr error
@@ -53,30 +64,13 @@ func loadGitHubAvatars(ctx context.Context, report *CommitReport, client *http.C
 			return loaded, err
 		}
 		user := &report.Users[i]
-		if user.sampleSHA == "" {
+		avatarURL := githubAvatarURL(user.Email, users)
+		if avatarURL == "" {
 			continue
 		}
-		commits, response, err := api.Repositories.ListCommits(ctx, parts[0], parts[1], &gh.CommitsListOptions{SHA: user.sampleSHA, ListOptions: gh.ListOptions{PerPage: 1}})
-		if err != nil {
-			var rateLimit *gh.RateLimitError
-			var abuseLimit *gh.AbuseRateLimitError
-			if errors.As(err, &rateLimit) || errors.As(err, &abuseLimit) || (response != nil && response.StatusCode == http.StatusTooManyRequests) {
-				return loaded, fmt.Errorf("GitHub API 请求限流，已停止获取头像")
-			}
-			if response != nil && response.StatusCode == http.StatusForbidden {
-				return loaded, fmt.Errorf("GitHub API 拒绝请求（HTTP 403），已停止获取头像")
-			}
-			if firstErr == nil {
-				firstErr = fmt.Errorf("查询公开提交头像: %w", err)
-			}
-			continue
-		}
-		if len(commits) != 1 || commits[0].GetSHA() != user.sampleSHA || commits[0].GetAuthor().GetID() == 0 {
-			continue
-		}
-		avatarURL := commits[0].GetAuthor().GetAvatarURL()
 		data, cached := images[avatarURL]
 		if !cached {
+			var err error
 			data, err = downloadGitHubAvatar(ctx, client, avatarURL)
 			images[avatarURL] = data
 			if err != nil && firstErr == nil {
@@ -91,8 +85,33 @@ func loadGitHubAvatars(ctx context.Context, report *CommitReport, client *http.C
 	return loaded, firstErr
 }
 
+func githubAvatarURL(email string, users map[string]string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if login, ok := users[email]; ok {
+		if !avatarLoginPattern.MatchString(login) {
+			return ""
+		}
+		return "https://avatars.githubusercontent.com/" + url.PathEscape(strings.ToLower(login))
+	}
+	local, domain, ok := strings.Cut(email, "@")
+	if !ok || domain != "users.noreply.github.com" {
+		return ""
+	}
+	if id, login, ok := strings.Cut(local, "+"); ok {
+		number, err := strconv.ParseUint(id, 10, 64)
+		if err != nil || number == 0 || !avatarLoginPattern.MatchString(login) {
+			return ""
+		}
+		return "https://avatars.githubusercontent.com/u/" + strconv.FormatUint(number, 10)
+	}
+	if !avatarLoginPattern.MatchString(local) {
+		return ""
+	}
+	return "https://avatars.githubusercontent.com/" + url.PathEscape(local)
+}
+
 func githubImageHost(u *url.URL) bool {
-	return u.Scheme == "https" && u.User == nil && u.Port() == "" && (u.Hostname() == "api.github.com" || u.Hostname() == "avatars.githubusercontent.com")
+	return u.Scheme == "https" && u.User == nil && u.Port() == "" && u.Hostname() == "avatars.githubusercontent.com"
 }
 
 func downloadGitHubAvatar(ctx context.Context, client *http.Client, rawURL string) ([]byte, error) {

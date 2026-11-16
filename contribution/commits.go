@@ -43,7 +43,6 @@ type CommitUser struct {
 	Email    string `json:"email,omitempty"`
 	CommitCounts
 	Weeks     []CommitWeek `json:"weeks,omitempty"`
-	sampleSHA string
 	avatarPNG []byte
 }
 
@@ -113,7 +112,6 @@ func CollectCommits(ctx context.Context, opts CommitOptions) (*CommitReport, err
 	report.LocalPath, report.SourceRef, report.HeadSHA = root, ref, sha
 	a := newAccumulator()
 	weeks := make(map[string]map[string]CommitCounts)
-	samples := make(map[string]string)
 	if err := local.walkCommits(ctx, sha, func(commit github.CommitActivity) error {
 		if err := a.addCommit(commit); err != nil {
 			return err
@@ -122,8 +120,6 @@ func CollectCommits(ctx context.Context, opts CommitOptions) (*CommitReport, err
 			return nil
 		}
 		identity := gitCommitIdentity(commit).Identity
-		// 留下较早的代表提交，提高该提交已公开到 GitHub 的可能性。
-		samples[identity] = commit.SHA
 		if weeks[identity] == nil {
 			weeks[identity] = make(map[string]CommitCounts)
 		}
@@ -144,7 +140,7 @@ func CollectCommits(ctx context.Context, opts CommitOptions) (*CommitReport, err
 	a.finish(stats)
 	report.Users = make([]CommitUser, 0, len(stats.Users))
 	for _, u := range stats.Users {
-		user := CommitUser{Identity: u.Identity, Name: u.Name, Email: u.Email, CommitCounts: commitCounts(u.Counts), sampleSHA: samples[u.Identity]}
+		user := CommitUser{Identity: u.Identity, Name: u.Name, Email: u.Email, CommitCounts: commitCounts(u.Counts)}
 		for week, counts := range weeks[u.Identity] {
 			user.Weeks = append(user.Weeks, CommitWeek{Week: week, CommitCounts: counts})
 		}

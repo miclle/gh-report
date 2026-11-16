@@ -48,6 +48,10 @@ func TestCommitsCommandWithoutToken(t *testing.T) {
 		{args: []string{"--chart", "-f", "markdown"}, failure: "--chart 需要"},
 		{args: []string{"--chart", "-f", "json", "-o", "report.md"}, failure: "--chart 需要"},
 		{args: []string{"--github-avatars"}, failure: "--github-avatars 需要 --chart"},
+		{args: []string{"--avatar-user", "alice@example.com=alice"}, failure: "--avatar-user 需要 --chart"},
+		{args: []string{"--chart", "--github-avatars=false", "--avatar-user", "alice@example.com=alice"}, failure: "--avatar-user 需要 --chart"},
+		{args: []string{"--chart", "-f", "markdown", "-o", "report.md", "--avatar-user", "alice@example.com=https://example.com"}, failure: "GitHub 用户名无效"},
+		{args: []string{"--chart", "-f", "markdown", "-o", "report.md", "--token", "unused"}, failure: "不支持 --token"},
 	} {
 		root := &cobra.Command{Use: "test", SilenceErrors: true, SilenceUsage: true}
 		root.PersistentFlags().String("config", "", "")

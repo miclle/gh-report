@@ -22,6 +22,11 @@ gh-report commits --ref main -f markdown --chart -o report.md
 
 # 完全离线导出图表，使用首字母头像
 gh-report commits --ref main -f markdown --chart --github-avatars=false -o report.md
+
+# 普通邮箱显式映射 GitHub 用户名，可重复指定
+gh-report commits --ref main -f markdown --chart -o report.md \
+  --avatar-user alice@example.com=alice \
+  --avatar-user bob@example.com=bob
 ```
 
 ## 参数与范围
@@ -34,6 +39,7 @@ gh-report commits --ref main -f markdown --chart --github-avatars=false -o repor
 | `--sort` | `commits` | `commits`、`changes` 数字降序，或 `user` 邮箱升序 |
 | `--chart` | `false` | 用折叠区块同时展示贡献者图表和表格；需要 `-f markdown` 和 `--output` |
 | `--github-avatars` | `true` | 仅图表模式联网获取并嵌入 GitHub 头像；设为 `false` 可完全离线，获取失败时保留首字母 |
+| `--avatar-user` | 无 | `email=username` 映射，可重复指定；仅影响头像，需要图表模式且不能关闭头像获取 |
 | `--output` / `-o` | stdout | 保存报告到指定文件；目标目录须已存在 |
 | `--show-rules` | `false` | 在表格或 Markdown 末尾显示统计口径；CSV / JSON 始终保留口径元数据 |
 
@@ -43,7 +49,7 @@ gh-report commits --ref main -f markdown --chart --github-avatars=false -o repor
 
 拒绝浅克隆；部分克隆缺少所需对象时失败，不允许 Git 隐式联网下载。使用者需要在执行前自行准备完整的本地历史。需要本机安装 Git。
 
-继承的工作报告参数（如 `--config`、`--repos`、`--days`、`--user`、AI 参数）若被显式传入会报错。`--token` 仅在头像模式可选使用。普通报表或关闭头像获取时不读取环境中的 Token；只有图表模式开启头像获取时支持可选的 `--token` 或 `GITHUB_TOKEN`。
+继承的工作报告参数（如 `--config`、`--token`、`--repos`、`--days`、`--user`、AI 参数）若被显式传入会报错。所有模式均不读取环境中的 Token，也不调用 GitHub API。
 
 ## 统计口径
 
@@ -78,11 +84,20 @@ Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时
 
 ### GitHub 头像
 
-`--chart` 默认获取并嵌入 GitHub 头像；用 `--github-avatars=false` 关闭后使用作者首字母头像，完全离线。开启头像获取时：自动匹配工作区的 GitHub remote，为每个作者选较早的代表提交，用 REST API 确认其 GitHub 主作者，再下载头像。它不使用邮箱搜索、不猜测账号，也不读取配置文件。公开提交可匿名查询，无需 Token；头像模式可选使用 `--token` > `GITHUB_TOKEN` 认证，以读取私有仓库或提高 API 额度。Token 只发送给 GitHub API，下载头像时不携带认证信息。
+`--chart` 默认直接从 `avatars.githubusercontent.com` 下载并嵌入头像，不调用 GitHub API、不读取 Token，也不要求仓库存在 remote 或已推送。用 `--github-avatars=false` 关闭后完全离线。
 
-头像规范化为 80 × 80 的 PNG 后直接嵌入 SVG，无需增加头像文件。分享 Markdown 与 SVG 后，读者无需联网获取头像；图片是导出时的快照，不会随 GitHub 头像更新自动变化。多个邮箱关联同一账号时复用下载的头像，但统计仍分属原邮箱，不改变作者归并或计数。
+头像账号按以下顺序确定：
 
-支持 github.com 提交；私有仓库需要可选 Token 具备仓库 Contents 读取权限。仓库不可访问、仅存在本地的代表提交、未关联账号、非 GitHub remote、下载失败或 API 限流时保留首字母头像，继续输出完整本地统计；stderr 显示获取数量和错误摘要。匿名 REST API 通常每 IP 每小时最多 60 次请求，触及限制后停止后续头像查询，不等待额度恢复；只输出一行简短提示，自动使用首字母并继续生成报告，不打印完整 API 限流错误。Ctrl-C 会取消头像请求及本次导出。
+1. 显式 `--avatar-user email=username` 映射优先，邮箱去除首尾空格并转小写；参数可重复，同一邮箱冲突映射时报错。
+2. `数字ID+用户名@users.noreply.github.com` 使用数字 ID 对应的头像地址，避免账号更名后失效。
+3. `用户名@users.noreply.github.com` 使用用户名对应的头像地址。
+4. 普通邮箱未配置映射时保留首字母，不根据邮箱前缀、Git 作者姓名或仓库 owner 猜测账号，也不通过搜索或抓取页面反查邮箱。
+
+例如你的作者邮箱是 `miclle.zheng@gmail.com`，可加 `--avatar-user miclle.zheng@gmail.com=miclle`。私有仓库、没有 remote 的仓库同样可用，因为头像获取与仓库访问权限无关；只需要能访问头像 CDN。
+
+头像规范化为 80 × 80 的 PNG 后直接嵌入 SVG，无需增加头像文件。分享 Markdown 与 SVG 后，读者无需联网获取头像；图片是导出时的快照，不会随 GitHub 头像更新自动变化。同一图表中相同头像地址只下载一次；映射仅影响头像，不改变邮箱身份、姓名、排序和任何计数。
+
+无可识别账号、图片不存在、网络失败或图片服务限流时自动使用首字母，继续输出完整本地统计；stderr 显示获取数量及首个下载错误的简短提示。失败的相同头像地址也会缓存，避免重复请求。头像下载不占用 GitHub REST API 的请求额度，但仍依赖图片服务可用性。Ctrl-C 会取消头像请求及本次导出。
 
 CSV 每行携带统计元数据，`record_type=user` 表示作者行，末尾 `record_type=total` 表示总计；再次汇总时应只读取作者行，避免重复相加。无参与者时 JSON `users=[]`，CSV 仍输出总计及元数据。
 

@@ -20,8 +20,8 @@ func newCommitsCmd() *cobra.Command {
 排除 merge 和空提交，不切换分支或 fetch，不支持浅克隆。只需本机 Git，不要求 GitHub remote。
 不应用 mailmap、不过滤 Bot；Issue / PR 统计请使用 contributors。
 图表模式默认联网获取 GitHub 头像并嵌入 SVG，无需 Token；--github-avatars=false 可关闭头像获取。
-普通报表或关闭头像获取时完全离线，不读取 Token。
-头像模式可选 --token 或 GITHUB_TOKEN，用于私有仓库或提高 API 请求额度；Token 只发送给 GitHub API。
+头像从 noreply 邮箱识别账号，或使用 --avatar-user email=username 显式映射（可重复）。
+所有模式均不调用 GitHub API、不读取 Token；普通报表或关闭头像获取时完全离线。
 头像不可用时保留首字母，不改变按邮箱归并的计数。`,
 		Example: `  gh-report commits
   gh-report commits --ref main --sort changes
@@ -39,6 +39,7 @@ func newCommitsCmd() *cobra.Command {
 	cmd.Flags().Bool("show-rules", false, "在表格或 Markdown 末尾显示统计口径（CSV / JSON 始终保留）")
 	cmd.Flags().Bool("chart", false, "在 Markdown 折叠区块中同时展示贡献者图表和表格（需 -f markdown 和 --output）")
 	cmd.Flags().Bool("github-avatars", true, "图表模式默认联网获取并嵌入 GitHub 头像；设为 false 可完全离线（无需 Token）")
+	cmd.Flags().StringArray("avatar-user", nil, "作者邮箱到 GitHub 用户名的映射: email=username（可重复，需 --chart）")
 	cmd.Flags().StringP("output", "o", "", "保存报告到文件；图表模式同时生成配套 SVG")
 	return cmd
 }
@@ -50,10 +51,14 @@ func init() {
 func commitOptions(cmd *cobra.Command) (contribution.CommitOptions, string, error) {
 	avatars, _ := cmd.Flags().GetBool("github-avatars")
 	chart, _ := cmd.Flags().GetBool("chart")
-	if cmd.Flags().Changed("token") && !(chart && avatars) {
-		return contribution.CommitOptions{}, "", fmt.Errorf("commits 不支持 --token；只有 --github-avatars 头像模式可选使用 Token")
+	entries, _ := cmd.Flags().GetStringArray("avatar-user")
+	if len(entries) > 0 && !(chart && avatars) {
+		return contribution.CommitOptions{}, "", fmt.Errorf("--avatar-user 需要 --chart，且不能关闭 --github-avatars")
 	}
-	for _, name := range []string{"config", "repos", "days", "user", "ai", "ai-provider", "ai-key", "ai-base-url", "model", "anthropic-key", "anthropic-base-url"} {
+	if _, err := contribution.ParseAvatarUsers(entries); err != nil {
+		return contribution.CommitOptions{}, "", err
+	}
+	for _, name := range []string{"config", "token", "repos", "days", "user", "ai", "ai-provider", "ai-key", "ai-base-url", "model", "anthropic-key", "anthropic-base-url"} {
 		if cmd.Flags().Changed(name) {
 			return contribution.CommitOptions{}, "", fmt.Errorf("commits 不支持 --%s；只读取本地 Git，请使用 --path 和 --ref 指定范围", name)
 		}
@@ -95,11 +100,12 @@ func runCommits(cmd *cobra.Command, _ []string) error {
 	}
 	avatars, _ := cmd.Flags().GetBool("github-avatars")
 	if opts.Weekly && avatars {
-		token, _ := cmd.Flags().GetString("token")
-		if !cmd.Flags().Changed("token") {
-			token = os.Getenv("GITHUB_TOKEN")
+		entries, _ := cmd.Flags().GetStringArray("avatar-user")
+		users, err := contribution.ParseAvatarUsers(entries)
+		if err != nil {
+			return err
 		}
-		loaded, avatarErr := contribution.LoadGitHubAvatars(ctx, report, token)
+		loaded, avatarErr := contribution.LoadGitHubAvatars(ctx, report, users)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}

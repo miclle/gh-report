@@ -24,18 +24,17 @@ func avatarResponse(req *http.Request, status int, data []byte) *http.Response {
 	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(data)), Request: req}
 }
 
-func TestGitHubAvatarsAreAnonymousCachedAndEmbedded(t *testing.T) {
+func TestGitHubAvatarsUseEmailOrMappingWithoutAPI(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "must-not-be-used")
-	path := newLocalFixture(t)
-	fixtureFile(t, path, "file", []byte("one\n"))
-	gitFixture(t, path, "add", ".")
-	gitFixture(t, path, "commit", "-m", "Alice")
-	fixtureFile(t, path, "file", []byte("one\ntwo\n"))
-	gitFixture(t, path, "add", ".")
-	gitFixture(t, path, "commit", "--author", "Other email <other@example.com>", "-m", "same GitHub account")
-	report, err := CollectCommits(context.Background(), CommitOptions{Path: path, Ref: "HEAD", Weekly: true})
-	if err != nil {
-		t.Fatal(err)
+	report := &CommitReport{Totals: CommitCounts{Commits: 4}, Users: []CommitUser{
+		{Email: "123+alice@users.noreply.github.com", Name: "Alice"},
+		{Email: "alice@users.noreply.github.com", Name: "Alice"},
+		{Email: "other@example.com", Name: "Other email"},
+		{Email: "unknown@example.com", Name: "Unknown"},
+	}}
+	for i := range report.Users {
+		report.Users[i].Commits = 1
+		report.Users[i].Weeks = []CommitWeek{{Week: "2026-01-05", CommitCounts: CommitCounts{Commits: 1}}}
 	}
 	before, err := json.Marshal(report.Users)
 	if err != nil {
@@ -47,42 +46,34 @@ func TestGitHubAvatarsAreAnonymousCachedAndEmbedded(t *testing.T) {
 	if err := png.Encode(&bitmap, pixels); err != nil {
 		t.Fatal(err)
 	}
-	apiRequests, imageRequests := 0, 0
+	paths := make(map[string]int)
 	client := &http.Client{Transport: avatarTransport(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("Authorization") != "" {
 			t.Error("avatar requests must not read a Token")
 		}
-		if req.URL.Host == "api.github.com" {
-			apiRequests++
-			if req.URL.Path != "/repos/team/repo/commits" || req.URL.Query().Get("per_page") != "1" {
-				t.Errorf("unexpected lookup: %s", req.URL)
-			}
-			sha := req.URL.Query().Get("sha")
-			if sha == "" {
-				t.Fatal("lookup must use a local representative commit")
-			}
-			data, _ := json.Marshal([]any{map[string]any{"sha": sha, "author": map[string]any{"id": 7, "login": "same-account", "avatar_url": "https://avatars.githubusercontent.com/u/7?v=4"}}})
-			return avatarResponse(req, 200, data), nil
-		}
 		if req.URL.Host != "avatars.githubusercontent.com" || req.URL.Query().Get("s") != "80" {
-			t.Errorf("unexpected avatar URL: %s", req.URL)
+			t.Errorf("unexpected avatar request: %s", req.URL)
 		}
-		imageRequests++
+		paths[req.URL.Path]++
 		return avatarResponse(req, 200, bitmap.Bytes()), nil
 	})}
-	loaded, err := loadGitHubAvatars(context.Background(), report, client, "")
-	if err != nil || loaded != 2 || apiRequests != 2 || imageRequests != 1 {
-		t.Fatalf("loaded=%d api=%d images=%d err=%v", loaded, apiRequests, imageRequests, err)
+	users, err := ParseAvatarUsers([]string{"other@example.com=alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadGitHubAvatars(context.Background(), report, client, users)
+	if err != nil || loaded != 3 || len(paths) != 2 || paths["/alice"] != 1 || paths["/u/123"] != 1 {
+		t.Fatalf("loaded=%d paths=%v err=%v", loaded, paths, err)
 	}
 	after, err := json.Marshal(report.Users)
-	if err != nil || !bytes.Equal(before, after) || report.Totals.Commits != 2 {
+	if err != nil || !bytes.Equal(before, after) || report.Totals.Commits != 4 {
 		t.Fatal("avatar enrichment changed identities or statistics")
 	}
 	var svg bytes.Buffer
 	if err := PrintCommitsChart(&svg, report); err != nil {
 		t.Fatal(err)
 	}
-	assertValidChartXML(t, svg.Bytes(), 2)
+	assertValidChartXML(t, svg.Bytes(), 4)
 	decoder := xml.NewDecoder(&svg)
 	embedded := 0
 	for {
@@ -102,15 +93,18 @@ func TestGitHubAvatarsAreAnonymousCachedAndEmbedded(t *testing.T) {
 			}
 		}
 	}
-	if embedded != 2 {
-		t.Fatalf("embedded %d images, want 2", embedded)
+	if embedded != 3 {
+		t.Fatalf("embedded %d images, want 3", embedded)
 	}
 }
 
-func TestGitHubAvatarRateLimitFallsBackWithoutMoreLookups(t *testing.T) {
-	report := &CommitReport{LocalPath: newLocalFixture(t), Users: []CommitUser{{sampleSHA: "one"}, {sampleSHA: "two"}, {sampleSHA: "three"}}}
+func TestGitHubAvatarDownloadFailureFallsBack(t *testing.T) {
+	report := &CommitReport{Users: []CommitUser{
+		{Email: "alice@users.noreply.github.com", Name: "Alice"},
+		{Email: "other@example.com", Name: "Alice"},
+		{Email: "unknown@example.com", Name: "Alice"},
+	}}
 	for i := range report.Users {
-		report.Users[i].Name = "Alice"
 		report.Users[i].CommitCounts = CommitCounts{Commits: 1, Additions: 2, Changes: 2}
 		report.Users[i].Weeks = []CommitWeek{{Week: "2026-01-05", CommitCounts: report.Users[i].CommitCounts}}
 	}
@@ -118,21 +112,11 @@ func TestGitHubAvatarRateLimitFallsBackWithoutMoreLookups(t *testing.T) {
 	requests := 0
 	client := &http.Client{Transport: avatarTransport(func(req *http.Request) (*http.Response, error) {
 		requests++
-		response := avatarResponse(req, http.StatusForbidden, []byte(`{"message":"API rate limit exceeded"}`))
-		response.Header.Set("X-RateLimit-Remaining", "0")
-		return response, nil
+		return avatarResponse(req, http.StatusTooManyRequests, nil), nil
 	})}
-	loaded, err := loadGitHubAvatars(context.Background(), report, client, "")
+	loaded, err := loadGitHubAvatars(context.Background(), report, client, map[string]string{"other@example.com": "alice"})
 	if err == nil || loaded != 0 || requests != 1 {
-		t.Fatalf("rate limit fallback: loaded=%d requests=%d err=%v", loaded, requests, err)
-	}
-	if strings.Contains(err.Error(), "https://") || !strings.Contains(err.Error(), "请求限流") {
-		t.Fatalf("limit notice should be concise: %v", err)
-	}
-	for _, user := range report.Users {
-		if len(user.avatarPNG) != 0 {
-			t.Fatal("failed lookup generated an avatar")
-		}
+		t.Fatalf("fallback: loaded=%d requests=%d err=%v", loaded, requests, err)
 	}
 	var chart bytes.Buffer
 	if err := PrintCommitsChart(&chart, report); err != nil {
@@ -140,10 +124,44 @@ func TestGitHubAvatarRateLimitFallsBackWithoutMoreLookups(t *testing.T) {
 	}
 	assertValidChartXML(t, chart.Bytes(), 3)
 	if strings.Count(chart.String(), ">A</text>") != 3 || strings.Contains(chart.String(), "data:image/png") {
-		t.Fatal("rate-limited chart must render initials for every unavailable avatar")
+		t.Fatal("unavailable avatars must render initials")
 	}
 	if !strings.Contains(chart.String(), "3 contributors · 3 commits · +6 / −0 lines") {
 		t.Fatal("avatar fallback changed chart totals")
+	}
+}
+
+func TestGitHubAvatarURLAndMappingValidation(t *testing.T) {
+	for _, test := range []struct{ email, want string }{
+		{" 123+Renamed@users.noreply.github.com ", "https://avatars.githubusercontent.com/u/123"},
+		{"Alice@users.noreply.github.com", "https://avatars.githubusercontent.com/alice"},
+		{"41898282+github-actions[bot]@users.noreply.github.com", "https://avatars.githubusercontent.com/u/41898282"},
+		{"alice@example.com", ""},
+		{"alice@users.noreply.github.com.evil.test", ""},
+		{"123+@users.noreply.github.com", ""},
+		{"0+alice@users.noreply.github.com", ""},
+		{"no-id+alice@users.noreply.github.com", ""},
+		{"alice/../../api@users.noreply.github.com", ""},
+		{"", ""},
+	} {
+		if got := githubAvatarURL(test.email, nil); got != test.want {
+			t.Errorf("%q: got %q want %q", test.email, got, test.want)
+		}
+	}
+	users, err := ParseAvatarUsers([]string{" Alice@Example.com = Miclle ", "alice@example.com=miclle"})
+	if err != nil || githubAvatarURL("ALICE@example.com", users) != "https://avatars.githubusercontent.com/miclle" {
+		t.Fatalf("invalid mapping normalization: %v %v", users, err)
+	}
+	users, err = ParseAvatarUsers([]string{"123+alice@users.noreply.github.com=override"})
+	if err != nil || githubAvatarURL("123+alice@users.noreply.github.com", users) != "https://avatars.githubusercontent.com/override" {
+		t.Fatal("explicit mapping must take precedence")
+	}
+	for _, entries := range [][]string{
+		{"alice"}, {"alice="}, {"=alice"}, {"a@b=https://example.com"}, {"a@b=../../api"}, {"a@b=alice", "A@b=bob"}, {"a@b@c=alice"},
+	} {
+		if _, err := ParseAvatarUsers(entries); err == nil {
+			t.Errorf("invalid mappings accepted: %v", entries)
+		}
 	}
 }
 
@@ -163,31 +181,5 @@ func TestAvatarRejectsExternalURLsAndNonBitmapContent(t *testing.T) {
 	}
 	if _, err := downloadGitHubAvatar(context.Background(), client, "https://avatars.githubusercontent.com/u/1"); err == nil {
 		t.Fatal("accepted active image content")
-	}
-}
-
-func TestAvatarTokenIsOnlySentToGitHubAPI(t *testing.T) {
-	report := &CommitReport{LocalPath: newLocalFixture(t), Users: []CommitUser{{sampleSHA: "sample"}}}
-	var bitmap bytes.Buffer
-	if err := png.Encode(&bitmap, image.NewNRGBA(image.Rect(0, 0, 1, 1))); err != nil {
-		t.Fatal(err)
-	}
-	requests := 0
-	client := &http.Client{Transport: avatarTransport(func(req *http.Request) (*http.Response, error) {
-		requests++
-		if req.URL.Host == "api.github.com" {
-			if req.Header.Get("Authorization") != "Bearer avatar-token" {
-				t.Error("optional API Token was not used")
-			}
-			return avatarResponse(req, 200, []byte(`[{"sha":"sample","author":{"id":1,"avatar_url":"https://avatars.githubusercontent.com/u/1"}}]`)), nil
-		}
-		if req.Header.Get("Authorization") != "" {
-			t.Error("Token leaked to the avatar CDN")
-		}
-		return avatarResponse(req, 200, bitmap.Bytes()), nil
-	})}
-	loaded, err := loadGitHubAvatars(context.Background(), report, client, "avatar-token")
-	if err != nil || loaded != 1 || requests != 2 {
-		t.Fatalf("loaded=%d requests=%d err=%v", loaded, requests, err)
 	}
 }

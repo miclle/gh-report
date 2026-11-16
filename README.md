@@ -169,6 +169,10 @@ gh-report commits --ref main -f markdown > commits.md
 # 用折叠区块同时展示图表和表格，默认获取并嵌入 GitHub 头像
 gh-report commits --ref main -f markdown --chart -o report.md
 
+# 普通邮箱可显式指定 GitHub 用户名，不调用 API、不需要 Token
+gh-report commits --ref main -f markdown --chart -o report.md \
+  --avatar-user miclle.zheng@gmail.com=miclle
+
 # 完全离线导出图表，使用首字母头像
 gh-report commits --ref main -f markdown --chart --github-avatars=false -o report.md
 ```
