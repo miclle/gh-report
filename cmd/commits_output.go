@@ -58,11 +58,3 @@ func writeCommitReportFile(path string, data []byte) error {
 	}
 	return nil
 }
-
-func saveCommitJobSummary(report *contribution.CommitReport, output string, avatarUsers map[string]string, showRules bool) error {
-	var document bytes.Buffer
-	if err := contribution.PrintCommitsJobSummary(&document, report, avatarUsers, showRules); err != nil {
-		return err
-	}
-	return writeCommitReportFile(output, document.Bytes())
-}

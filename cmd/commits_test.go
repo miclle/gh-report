@@ -92,5 +92,8 @@ func TestCommitsCommandWithoutToken(t *testing.T) {
 		if err != nil || !strings.Contains(string(data), "| TOTAL | | 1 | 1 | 0 | 1 |") {
 			t.Fatalf("inconsistent report %s: %v %s", file, err, data)
 		}
+		if file == summaryOutput && (strings.Contains(string(data), "<img") || strings.Contains(string(data), ".svg")) {
+			t.Fatal("standalone Summary must contain data without inaccessible image references")
+		}
 	}
 }

@@ -42,7 +42,7 @@ func newCommitsCmd() *cobra.Command {
 	cmd.Flags().Bool("github-avatars", true, "图表模式默认联网获取并嵌入 GitHub 头像；设为 false 可完全离线（无需 Token）")
 	cmd.Flags().StringArray("avatar-user", nil, "作者邮箱到 GitHub 用户名的映射: email=username（可重复，需 --chart）")
 	cmd.Flags().StringP("output", "o", "", "保存报告到文件；图表模式同时生成配套 SVG")
-	cmd.Flags().String("summary-output", "", "另存可直接展示卡片和柱状图的 GitHub Job Summary（需 --chart）")
+	cmd.Flags().String("summary-output", "", "另存 GitHub Job Summary 使用的 Markdown 数据表格，复用同一次采集（需 --chart）")
 	return cmd
 }
 
@@ -144,7 +144,7 @@ func runCommits(cmd *cobra.Command, _ []string) error {
 		}
 		summaryOutput, _ := cmd.Flags().GetString("summary-output")
 		if summaryOutput != "" {
-			return saveCommitJobSummary(report, summaryOutput, users, showRules)
+			return saveCommitReport(report, "markdown", summaryOutput, showRules, false)
 		}
 		return nil
 	}

@@ -8,6 +8,11 @@ set -euo pipefail
 
 chart="${GH_REPORT_CHART:-true}"
 avatars="${GH_REPORT_AVATARS:-true}"
+artifact_name="${GH_REPORT_ARTIFACT_NAME:-commit-report}"
+# 原图以独立文件上传，名称必须是单个文件名，不能越过临时目录。
+case "$artifact_name" in
+  */*|*\\*|*$'\n'*|*$'\r'*) echo 'artifact-name 不能包含路径分隔符或换行。' >&2; exit 1 ;;
+esac
 for value in "$chart" "$avatars"; do
   case "$value" in
     true|false) ;;
@@ -32,6 +37,7 @@ mkdir "$directory/report"
 )
 
 args=(commits --path "$target" --ref "$sha" --sort "${GH_REPORT_SORT:-commits}" -f markdown)
+chart_file=''
 if [[ "$chart" == true ]]; then
   avatar_args=("--github-avatars=$avatars")
   while IFS= read -r entry || [[ -n "$entry" ]]; do
@@ -40,6 +46,10 @@ if [[ "$chart" == true ]]; then
   done <<< "${GH_REPORT_AVATAR_USERS:-}"
   "$directory/gh-report" "${args[@]}" --chart "${avatar_args[@]}" -o "$directory/report/report.md" \
     --summary-output "$directory/report/summary.md"
+  # 保留报告包内的相对引用，同时准备不压缩上传的同一份 SVG 原图。
+  mkdir "$directory/chart"
+  chart_file="$directory/chart/$artifact_name.svg"
+  cp "$directory"/report/*.svg "$chart_file"
 else
   if [[ -n "${GH_REPORT_AVATAR_USERS:-}" ]]; then
     echo 'avatar-users 需要 chart=true。' >&2
@@ -50,4 +60,4 @@ else
 fi
 
 # 仅在全部报告成功后发布路径，不把部分统计作为成功结果。
-printf 'directory=%s\nhead-sha=%s\n' "$directory" "$sha" >> "$GITHUB_OUTPUT"
+printf 'directory=%s\nhead-sha=%s\nchart-file=%s\n' "$directory" "$sha" "$chart_file" >> "$GITHUB_OUTPUT"

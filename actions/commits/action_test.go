@@ -82,6 +82,7 @@ func TestReportsAndSummary(t *testing.T) {
 				"GITHUB_WORKSPACE": workspace, "RUNNER_TEMP": temporary, "GITHUB_OUTPUT": outputPath,
 				"GH_REPORT_PATH": filepath.Base(target), "GH_REPORT_REF": "HEAD", "GH_REPORT_SORT": "commits",
 				"GH_REPORT_CHART": chart, "GH_REPORT_AVATARS": "false",
+				"GH_REPORT_ARTIFACT_NAME": "team report",
 			}
 			output, err := runScript(t, "run.sh", env)
 			if err != nil {
@@ -110,6 +111,18 @@ func TestReportsAndSummary(t *testing.T) {
 			if chart == "true" && !strings.Contains(report, "./"+filepath.Base(images[0])) {
 				t.Fatal("report does not reference adjacent SVG")
 			}
+			if chart == "true" {
+				original := readFile(t, images[0])
+				if outputs["chart-file"] != filepath.Join(outputs["directory"], "chart", "team report.svg") || readFile(t, outputs["chart-file"]) != original {
+					t.Fatal("separate chart must preserve the original SVG byte for byte")
+				}
+				if !strings.Contains(original, `<path d="M44 230`) || !strings.Contains(original, "Weekly commits") {
+					t.Fatal("original area chart missing")
+				}
+				env["GH_REPORT_CHART_URL"] = "https://github.com/example/repo/actions/runs/1/artifacts/3"
+			} else if outputs["chart-file"] != "" {
+				t.Fatal("disabled chart must not publish a chart path")
+			}
 			env["GH_REPORT_DIRECTORY"] = outputs["directory"]
 			env["GH_REPORT_HEAD_SHA"] = sha
 			env["GH_REPORT_ARTIFACT_URL"] = "https://github.com/example/repo/actions/runs/1/artifacts/2"
@@ -122,9 +135,8 @@ func TestReportsAndSummary(t *testing.T) {
 			if !strings.Contains(summary, "| TOTAL | | 2 | 4 | 1 | 5 |") || !strings.Contains(summary, env["GH_REPORT_ARTIFACT_URL"]) || strings.Contains(summary, ".svg") {
 				t.Fatalf("invalid Job Summary:\n%s", summary)
 			}
-			hasChart := strings.Contains(summary, `<table><tbody>`) && strings.Contains(summary, `width="5" height=`) && strings.Contains(summary, "共享纵轴")
-			if hasChart != (chart == "true") {
-				t.Fatalf("chart=%s: wrong inline chart state: %s", chart, summary)
+			if strings.Contains(summary, "/artifacts/3") != (chart == "true") || strings.Contains(summary, "<img") || strings.Contains(summary, "<svg") || strings.Contains(summary, "githubassets.com") {
+				t.Fatalf("chart=%s: must link to original chart without an inline substitute: %s", chart, summary)
 			}
 		})
 	}
@@ -164,12 +176,30 @@ func TestOversizedSummaryKeepsTotalsAndDownload(t *testing.T) {
 	output, err := runScript(t, "summary.sh", map[string]string{
 		"GH_REPORT_DIRECTORY": directory, "GH_REPORT_HEAD_SHA": strings.Repeat("a", 40),
 		"GH_REPORT_ARTIFACT_URL": "https://github.com/example/repo/actions/runs/1/artifacts/2", "GITHUB_STEP_SUMMARY": summaryPath,
+		"GH_REPORT_CHART_URL": "https://github.com/example/repo/actions/runs/1/artifacts/3",
 	})
 	if err != nil {
 		t.Fatalf("summary: %v\n%s", err, output)
 	}
 	summary := readFile(t, summaryPath)
-	if len(summary) >= 1024*1024 || !strings.Contains(summary, "| TOTAL | | 99 | 100 | 10 | 110 |") || !strings.Contains(summary, "仅展示全量总计") || !strings.Contains(summary, "/artifacts/2") {
+	if len(summary) >= 1024*1024 || !strings.Contains(summary, "| TOTAL | | 99 | 100 | 10 | 110 |") || !strings.Contains(summary, "仅展示全量总计") || !strings.Contains(summary, "/artifacts/2") || !strings.Contains(summary, "/artifacts/3") {
 		t.Fatalf("invalid truncated summary: %s", summary)
+	}
+}
+
+func TestArtifactNameCannotEscapeChartDirectory(t *testing.T) {
+	for _, name := range []string{"../outside", `nested\file`, "name\nchart-file=outside", "name\routside"} {
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			outputPath := filepath.Join(directory, "outputs")
+			writeFile(t, outputPath, "")
+			output, err := runScript(t, "run.sh", map[string]string{
+				"GITHUB_WORKSPACE": directory, "RUNNER_TEMP": directory, "GITHUB_OUTPUT": outputPath,
+				"GH_REPORT_ARTIFACT_NAME": name,
+			})
+			if err == nil || !strings.Contains(string(output), "artifact-name") || readFile(t, outputPath) != "" {
+				t.Fatalf("unsafe name accepted: %v %s", err, output)
+			}
+		})
 	}
 }

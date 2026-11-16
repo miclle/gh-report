@@ -39,7 +39,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 - [docs/report-generation.md](docs/report-generation.md) — 报告生成技术文档（数据流、并发模型、过滤层次）
 - [docs/contributors.md](docs/contributors.md) — 仓库贡献统计口径、身份归并、输出及失败行为
 - [docs/commits.md](docs/commits.md) — 完全离线的提交统计、默认 ref 选择和作者邮箱聚合
-- [actions/commits/README.md](actions/commits/README.md) — 跨仓库 Composite Action、Job Summary 原生 HTML 卡片 / 活动柱状图和报告 Artifact；`--summary-output` 与 SVG 复用单次采集，脚本集成测试随 `go test ./...` 执行
+- [actions/commits/README.md](actions/commits/README.md) — 跨仓库 Composite Action、Job Summary 数据表格、原版 SVG 图表入口和报告 Artifact；`--summary-output` 与 SVG 复用单次采集，脚本集成测试随 `go test ./...` 执行
 
 ## Conventions
 
