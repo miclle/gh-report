@@ -275,8 +275,8 @@ func extractPlanItems(reports []RepoReport, user string) []PlanItem {
 			if user != "" && len(pr.Assignees) > 0 && !hasAssignee(pr.Assignees, user) {
 				continue
 			}
-			state := prDisplayState(pr)
-			if state == "merged" || state == "closed" {
+			// 草稿 PR 关闭后仍可能保留 draft 标记，计划资格以实际状态为准。
+			if pr.GetState() != "open" || pr.MergedAt != nil {
 				continue
 			}
 			key := fmt.Sprintf("%s#%d", fullRepo, pr.GetNumber())
