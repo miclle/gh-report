@@ -120,6 +120,47 @@ func TestPublishRejectsOrdinaryBranchAndMissingReadOnlyBranch(t *testing.T) {
 	}
 }
 
+func TestPublishStableChartTracksLatestReport(t *testing.T) {
+	env, remote, directory := publisherFixture(t)
+	// 使用带指纹的源文件，固定名称必须由发布阶段额外生成。
+	chart := filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report-first.svg")
+	if err := os.Rename(env["GH_REPORT_CHART_FILE"], chart); err != nil {
+		t.Fatal(err)
+	}
+	env["GH_REPORT_CHART_FILE"] = chart
+	writeFile(t, filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report.md"), "![chart](./report-first.svg)\n")
+	first := readFile(t, chart)
+	firstURL := publishedURL(t, env)
+	firstSHA := git(t, directory, "--git-dir", remote, "rev-parse", "gh-report")
+	stablePath := "reports/team report/chart.svg"
+	if got := git(t, directory, "--git-dir", remote, "show", "gh-report:"+stablePath); got != first {
+		t.Fatal("stable chart must be created from the current SVG")
+	}
+	git(t, directory, "--git-dir", remote, "cat-file", "-e", "gh-report:reports/team report/report-first.svg")
+
+	second := "<svg>updated chart</svg>"
+	writeFile(t, chart, second)
+	if publishedURL(t, env) == firstURL {
+		t.Fatal("Summary must reference the new chart commit")
+	}
+	if got := git(t, directory, "--git-dir", remote, "show", "gh-report:"+stablePath); got != second {
+		t.Fatal("stable chart path must follow the latest publication")
+	}
+	if got := git(t, directory, "--git-dir", remote, "show", firstSHA+":"+stablePath); got != first {
+		t.Fatal("historical chart must remain unchanged")
+	}
+
+	env["GH_REPORT_CHART_FILE"] = ""
+	if err := os.Remove(chart); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report.md"), "# Table only\n")
+	publishedURL(t, env)
+	if files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report", "reports/team report/"); strings.Contains(files, ".svg") {
+		t.Fatal("table-only publication must remove the outdated stable chart")
+	}
+}
+
 func TestConcurrentChartPublishPreservesBothReports(t *testing.T) {
 	env, remote, directory := publisherFixture(t)
 	publishedURL(t, env)

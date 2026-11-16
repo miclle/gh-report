@@ -108,6 +108,9 @@ for attempt in 1 2 3; do
   mkdir -p "$directory/$report_path"
   cp -R "$GH_REPORT_REPORT_DIRECTORY/." "$directory/$report_path/"
   cp "$GH_REPORT_REPORT_DIRECTORY/report.md" "$directory/$report_path/README.md"
+  if [[ -n "$image_path" ]]; then
+    cp "$GH_REPORT_CHART_FILE" "$directory/$report_path/chart.svg"
+  fi
   git -C "$directory" add -- .gh-report README.md "$report_path"
   if ! git -C "$directory" diff --cached --quiet; then
     git -C "$directory" -c commit.gpgsign=false commit -q -s -m 'docs(report): 发布完整提交贡献报告'

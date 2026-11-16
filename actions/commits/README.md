@@ -77,6 +77,20 @@ jobs:
 - 两个 Artifact 均继承仓库访问控制和默认保留期；访问者需要登录并具有仓库读取权限，过期后链接失效。报告分支中的文件遵循仓库访问权限，不会随 Artifact 过期而删除。
 - `reports/<artifact-name>/README.md` 在 GitHub 分支目录中直接展示完整报告，旁边保留原始 `report.md`、`summary.md` 和配套 SVG。Summary 的“在线查看完整报告”链接固定到本次发布的提交。
 
+### 在 README 或 Contributing 中展示最新图表
+
+开启图表并成功发布报告分支时，Action 额外保存 `reports/<artifact-name>/chart.svg`。固定文件名随该报告的每次发布更新，可在默认分支的 README 或 Contributing 中配置一次图片引用：
+
+```markdown
+![贡献统计](https://github.com/OWNER/REPO/raw/refs/heads/gh-report/reports/commit-report/chart.svg)
+
+[查看完整报告](https://github.com/OWNER/REPO/tree/gh-report/reports/commit-report)
+```
+
+将 `OWNER/REPO` 替换为目标仓库，将 `gh-report` 和 `commit-report` 分别替换为 `report-branch` 和 `artifact-name` 的实际值；名称包含空格等特殊字符时需进行 URL 编码。图片使用分支路径，后续发布无需更新引用文档。GitHub 图片缓存可能导致新图表稍后显示，私有仓库仍要求访问者具有读取权限。
+
+`chart.svg` 只在报告分支发布时生成，原有带指纹的 SVG 和 Artifact 文件保持原有布局。Actions Summary 继续引用固定提交 SHA 的图片地址，保留每次运行的历史图表。只读 PR 复用不会更新固定文件；关闭图表后再次成功发布同名报告，会移除该报告目录中旧的 `chart.svg`。
+
 ## 报告分支与权限
 
 `gh-report` 是独立的报告发布分支。首次发布从空树创建，包含用途标记 `.gh-report`、说明、`charts/` 中的 SVG 和 `reports/` 中的完整报告，不复制源代码历史。已有分支必须带有匹配的用途标记，防止误写业务分支。图表以内容指纹命名，相同内容复用已有文件；`reports/<artifact-name>/` 展示该名称的最新完整报告，历史版本保留在 Git 提交中。每次报告更新追加普通提交，不强推，遇到并发冲突重新读取远端后重试。
