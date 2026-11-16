@@ -11,6 +11,7 @@ GitHub 仓库活动报告生成工具。通过 GitHub API 获取指定仓库（�
 - **Review 摘要** — 每个 PR 的审查人及审查状态
 - **Projects v2 迭代** — 展示当前迭代和下一迭代中的工作项
 - **用户过滤** — 可选仅展示指定用户的活动
+- **仓库贡献统计** — `contributors` 独立统计单仓库全历史的提交、变更行数、Issue 与 PR 数，支持本地 Git 提交采集及表格、CSV、JSON 输出
 - **配置文件** — 支持 YAML 配置文件，避免重复输入参数
 - **多种输出格式**：
   - `csv`（默认）— CSV 分段格式，展示原始活动数据
@@ -129,6 +130,24 @@ days: 14
 命令行参数优先级高于配置文件中的值。
 
 ## 使用方式
+
+### 仓库贡献统计
+
+```bash
+gh-report contributors -r owner/repo
+gh-report contributors -r owner/repo --sort changes --exclude-bots
+gh-report contributors -r owner/repo -f csv > contributors.csv
+gh-report contributors -r owner/repo -f json > contributors.json
+
+# 在本地 Git 工作区内运行：本地统计 commits，联网统计 Issue / PR
+gh-report contributors --local --sort changes
+```
+
+默认统计默认分支全历史，提交按主作者归属并排除 merge 和空提交。Issue 展示创建数及其中已完成数（按 Issue 作者归属，不代表解决者贡献）；PR 展示创建数及其中已合并数。用户取三类数据的并集，不限前 100 名。
+
+此子命令的默认格式为 `table`；配置文件只复用 `token` 和单个 `repos`，工作报告的格式、日期、用户及 AI 配置不生效。详细参数、身份归并、CSV 总计行及失败行为见[仓库贡献统计](docs/contributors.md)。
+
+`--local` 自动识别当前工作区的 GitHub remote，以 GitHub 默认分支名称选择本地分支，缺失时使用对应的本地跟踪分支。它不切换分支或自动 fetch，不支持浅克隆；仍需 GitHub Token 获取 Issue / PR 和关联作者身份。报告记录实际本地 ref 和 SHA，未提交修改及其他未合并分支不计入。
 
 ### 报告类型
 
@@ -299,6 +318,7 @@ gh-report/
 │   ├── weekly.go           # weekly 子命令
 │   ├── monthly.go          # monthly 子命令
 │   ├── yearly.go           # yearly 子命令
+│   ├── contributors.go     # 仓库贡献统计子命令
 │   └── version.go          # version 子命令
 ├── ai/
 │   ├── ai.go               # AI 客户端统一接口、工厂函数
@@ -309,8 +329,10 @@ gh-report/
 │   ├── types.go            # Projects v2 相关数据结构
 │   ├── issues.go           # Issue 和 Issue 评论获取
 │   ├── pulls.go            # PR、Review、Review 评论获取
+│   ├── commits.go          # 默认分支固定 HEAD 的提交历史查询
 │   ├── projects.go         # Projects v2 GraphQL 查询（迭代信息）
 │   └── links.go            # Issue–PR 明确关联查询
+├── contribution/           # 全历史贡献采集、用户聚合、表格/CSV/JSON 输出
 ├── report/
 │   ├── collector.go        # 按仓库收集和聚合数据
 │   ├── printer.go          # CSV 格式化输出
@@ -318,6 +340,7 @@ gh-report/
 │   ├── task_links.go       # 关联采集与失败回退
 │   └── tasks.go            # 任务归并、多来源链接与状态展示
 └── docs/
+    ├── contributors.md     # 仓库贡献统计用法与口径
     ├── report-rules.md     # 报告业务规则
     └── report-generation.md # 报告生成技术文档
 ```
