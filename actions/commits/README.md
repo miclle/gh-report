@@ -46,6 +46,7 @@ jobs:
 | `sort` | `commits` | `commits`、`changes` 或 `user` |
 | `chart` | `'true'` | 是否生成原版贡献者卡片和按周面积图 SVG，并在 Summary 提供原图入口 |
 | `report-branch` | 空 | 完整报告分支，例如 `gh-report`；开启后在 Summary 内嵌图表并提供在线报告入口，需要 `contents: write`。留空时保留只读模式及 Artifact 链接 |
+| `publish-on-pr` | `'false'` | 设为 `'true'` 允许 PR 自动创建和更新报告分支；要求该 PR 的 `GITHUB_TOKEN` 实际具有 `contents: write` |
 | `github-avatars` | `'true'` | 图表是否直接下载并嵌入 GitHub 头像；设为 `'false'` 可关闭，下载失败使用首字母 |
 | `avatar-users` | 空 | 多行 `email=username` 头像映射；需要开启图表和头像 |
 | `artifact-name` | `commit-report` | 完整报告 Artifact 名称；原图使用该名称加 `.svg`。同一 workflow 中所有 Artifact 名称须唯一，例如包含 matrix 值；不能包含路径分隔符或换行 |
@@ -82,7 +83,9 @@ jobs:
 
 每份 Summary 引用固定提交 SHA 下的 SVG 和完整报告，后续更新不会改变旧 Summary 对应的内容。不同报告名称使用独立目录，并发发布不会覆盖其他名称的报告。不要删除报告分支或重写其历史；报告图片及历史会持续累积。
 
-启用报告分支需为 workflow 设置 `contents: write`，使用 Actions 自带的 `GITHUB_TOKEN`，无需配置额外 Secret。`pull_request` 事件只读取、复用已经发布的相同图表，不写入报告分支；缺少对应图表时，Summary 明确提示并保留 Artifact 入口。完整报告和新图表由受信任的手动、定时或 push workflow 发布；PR 不将本次完整报告写入分支，不向 fork PR 提供写凭据。
+启用报告分支需为 workflow 设置 `contents: write`，使用 Actions 自带的 `GITHUB_TOKEN`，无需配置额外 Secret。`pull_request` 事件默认只读取、复用已经发布的相同图表，不写入报告分支；缺少对应图表时，Summary 明确提示并保留 Artifact 入口。
+
+需要在 PR 阶段直接发布时，可显式设置 `publish-on-pr: 'true'`。Action 会在首次执行时自动创建报告分支，保存完整报告并在本次 Summary 内嵌 SVG，无需先合并或手工初始化。仅在受信任且 Token 实际具有写权限的 PR 中启用；该选项不会提升 Token 权限，普通 fork PR 的只读 Token 仍无法发布。建议固定 Action 的完整提交 SHA，并 checkout 目标仓库的默认分支统计。后续运行继续追加报告提交，不覆盖或强推历史。
 
 分支权限不足、规则限制或发布失败时，统计和 Artifact 仍保留，Summary 提示使用原图链接。若不需要内嵌图片，可省略 `report-branch` 并保留 `contents: read`。
 

@@ -16,6 +16,9 @@ inputs:
   report-branch:
     description: '保存完整报告并提供 Summary 内嵌图表的专用分支，例如 gh-report；需 contents: write，留空时只提供 Artifact 链接。'
     default: ''
+  publish-on-pr:
+    description: '是否允许 PR 创建和更新报告分支；仅在受信任且 GITHUB_TOKEN 已有 contents: write 的 PR 中启用。'
+    default: 'false'
   github-avatars:
     description: 图表是否直接下载并嵌入 GitHub 头像，失败自动使用首字母。
     default: 'true'
@@ -96,7 +99,7 @@ runs:
         GH_REPORT_REPORT_DIRECTORY: ${{ steps.report.outputs.directory }}/report
         GH_REPORT_REPORT_BRANCH: ${{ inputs.report-branch }}
         GH_REPORT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
-        GH_REPORT_READ_ONLY: ${{ github.event_name == 'pull_request' }}
+        GH_REPORT_READ_ONLY: ${{ github.event_name == 'pull_request' && inputs.publish-on-pr != 'true' }}
         GH_REPORT_GITHUB_TOKEN: ${{ github.token }}
       run: bash "$GH_REPORT_ACTION_PATH/publish-report.sh"
 
