@@ -1,0 +1,72 @@
+name: Commit contribution report
+description: 统计本地 Git 全历史，将表格写入 Job Summary，并上传可下载的图表报告，无需统计用 Token。
+inputs:
+  path:
+    description: 已 checkout 的目标 Git 仓库路径，相对于 github.workspace。
+    default: '.'
+  ref:
+    description: 本地 Git 引用；默认统计 checkout 的 HEAD。
+    default: HEAD
+  sort:
+    description: 排序方式，commits、changes 或 user。
+    default: commits
+  chart:
+    description: 是否在下载报告中包含贡献者卡片和按周趋势 SVG。
+    default: 'true'
+  github-avatars:
+    description: 图表是否直接下载并嵌入 GitHub 头像，失败自动使用首字母。
+    default: 'true'
+  avatar-users:
+    description: 每行一个 email=username 头像映射，仅图表模式生效。
+    default: ''
+  artifact-name:
+    description: 报告 Artifact 名称；同一 workflow 中多次调用时须使用不同名称。
+    default: commit-report
+outputs:
+  report-directory:
+    description: runner 上保存报告的绝对目录。
+    value: ${{ steps.report.outputs.directory }}/report
+  head-sha:
+    description: 本次统计固定的目标提交 SHA。
+    value: ${{ steps.report.outputs.head-sha }}
+  artifact-url:
+    description: 完整报告下载链接，访问者需要仓库读取权限且 Artifact 未过期。
+    value: ${{ steps.artifact.outputs.artifact-url }}
+runs:
+  using: composite
+  steps:
+    - name: Setup Go for gh-report
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ${{ github.action_path }}/../../go.mod
+        cache: false
+
+    - name: Build and generate reports
+      id: report
+      shell: bash
+      env:
+        GH_REPORT_ACTION_PATH: ${{ github.action_path }}
+        GH_REPORT_PATH: ${{ inputs.path }}
+        GH_REPORT_REF: ${{ inputs.ref }}
+        GH_REPORT_SORT: ${{ inputs.sort }}
+        GH_REPORT_CHART: ${{ inputs.chart }}
+        GH_REPORT_AVATARS: ${{ inputs.github-avatars }}
+        GH_REPORT_AVATAR_USERS: ${{ inputs.avatar-users }}
+      run: bash "$GH_REPORT_ACTION_PATH/run.sh"
+
+    - name: Upload complete report
+      id: artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.report.outputs.directory }}/report/*
+        if-no-files-found: error
+
+    - name: Publish Job Summary
+      shell: bash
+      env:
+        GH_REPORT_ACTION_PATH: ${{ github.action_path }}
+        GH_REPORT_DIRECTORY: ${{ steps.report.outputs.directory }}
+        GH_REPORT_HEAD_SHA: ${{ steps.report.outputs.head-sha }}
+        GH_REPORT_ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+      run: bash "$GH_REPORT_ACTION_PATH/summary.sh"

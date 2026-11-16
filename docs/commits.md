@@ -82,6 +82,10 @@ Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时
 
 图表模式需要指定 Markdown 文件路径，不能只重定向 stdout；其他格式及普通 Markdown 仍支持 stdout，也可通过 `--output` 保存。文件写入使用同目录临时文件后替换；失败会返回非零退出码，不覆盖尚未成功生成的新报告。
 
+### GitHub Actions
+
+使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`，向 Job Summary 写入表格并上传可下载的完整报告。图表仅放在 Artifact 中，避免 Summary 无法访问本地 SVG 相对路径。超过 Summary 大小预算时保留全量总计和下载链接；无需额外统计用 Token。
+
 ### GitHub 头像
 
 `--chart` 默认直接从 `avatars.githubusercontent.com` 下载并嵌入头像，不调用 GitHub API、不读取 Token，也不要求仓库存在 remote 或已推送。用 `--github-avatars=false` 关闭后完全离线。

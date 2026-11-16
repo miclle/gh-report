@@ -179,6 +179,8 @@ gh-report commits --ref main -f markdown --chart --github-avatars=false -o repor
 
 默认分支信息仅来自本地缓存；缺少 `origin/HEAD` 时需显式指定 `--ref`，不会猜测当前分支。按作者邮箱聚合，输出 commits、新增、删除及变更行数；支持 Table / Markdown / CSV / JSON。详细口径见[离线提交统计](docs/commits.md)。
 
+可在其他仓库的 GitHub Actions 中调用 [`actions/commits`](actions/commits/README.md)：checkout 完整历史后，将贡献表格展示在 Job Summary，并通过 Artifact 下载 Markdown 和 SVG 图表，无需配置统计用 Token。
+
 ### 报告类型
 
 通过子命令指定报告类型，不指定子命令时默认为日报：
