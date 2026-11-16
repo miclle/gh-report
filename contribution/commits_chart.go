@@ -20,19 +20,18 @@ type activityPoint struct {
 	commits int64
 }
 
-// PrintCommitsChart 生成包含所有作者卡片的独立 SVG，按周展示提交活动，不包含时间选择控件。
-func PrintCommitsChart(w io.Writer, report *CommitReport) error {
+func commitChartSeries(report *CommitReport) ([][]activityPoint, time.Time, time.Time, int64, error) {
 	series := make([][]activityPoint, len(report.Users))
 	var first, last time.Time
 	var maximum int64
 	for i, user := range report.Users {
 		if len(user.Weeks) == 0 {
-			return fmt.Errorf("作者 %q 缺少按周活动数据，请启用 Weekly 采集", user.Identity)
+			return nil, first, last, 0, fmt.Errorf("作者 %q 缺少按周活动数据，请启用 Weekly 采集", user.Identity)
 		}
 		for _, week := range user.Weeks {
 			date, err := time.Parse(time.DateOnly, week.Week)
 			if err != nil {
-				return fmt.Errorf("无法解析活动周 %q: %w", week.Week, err)
+				return nil, first, last, 0, fmt.Errorf("无法解析活动周 %q: %w", week.Week, err)
 			}
 			if first.IsZero() || date.Before(first) {
 				first = date
@@ -48,6 +47,15 @@ func PrintCommitsChart(w io.Writer, report *CommitReport) error {
 	}
 	if !first.IsZero() && first.Equal(last) {
 		first, last = first.Add(-chartWeek), last.Add(chartWeek)
+	}
+	return series, first, last, maximum, nil
+}
+
+// PrintCommitsChart 生成包含所有作者卡片的独立 SVG，按周展示提交活动，不包含时间选择控件。
+func PrintCommitsChart(w io.Writer, report *CommitReport) error {
+	series, first, last, maximum, err := commitChartSeries(report)
+	if err != nil {
+		return err
 	}
 	const margin, gap, cardWidth, cardHeight, top = 24, 20, 546, 266, 100
 	columns := 2
@@ -118,7 +126,7 @@ func PrintCommitsChart(w io.Writer, report *CommitReport) error {
 		fmt.Fprintf(&svg, `<text x="44" y="250" class="axis">%s</text><text x="524" y="250" text-anchor="end" class="axis">%s</text></g>`, first.Format(time.DateOnly), last.Format(time.DateOnly))
 	}
 	svg.WriteString("</svg>\n")
-	_, err := io.WriteString(w, svg.String())
+	_, err = io.WriteString(w, svg.String())
 	return err
 }
 

@@ -1,5 +1,5 @@
 name: Commit contribution report
-description: 统计本地 Git 全历史，将表格写入 Job Summary，并上传可下载的图表报告，无需统计用 Token。
+description: 统计本地 Git 全历史，在 Job Summary 展示贡献图表和表格，并上传完整报告，无需统计用 Token。
 inputs:
   path:
     description: 已 checkout 的目标 Git 仓库路径，相对于 github.workspace。
@@ -11,7 +11,7 @@ inputs:
     description: 排序方式，commits、changes 或 user。
     default: commits
   chart:
-    description: 是否在下载报告中包含贡献者卡片和按周趋势 SVG。
+    description: 是否在 Job Summary 展示贡献者卡片和活动柱状图，并在下载报告中包含 SVG。
     default: 'true'
   github-avatars:
     description: 图表是否直接下载并嵌入 GitHub 头像，失败自动使用首字母。

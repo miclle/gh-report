@@ -1,6 +1,6 @@
 # 在 GitHub Actions 中展示提交统计
 
-此 Composite Action 从自身源码构建 `gh-report`，读取调用仓库的完整 Git 历史，将完整表格写入 workflow 的 Job Summary，并上传 Markdown 报告和配套 SVG。无需配置统计用 Token，不调用 GitHub API。
+此 Composite Action 从自身源码构建 `gh-report`，读取调用仓库的完整 Git 历史，在 workflow 的 Job Summary 直接展示贡献者卡片、活动柱状图和折叠表格，并上传 Markdown 报告和配套 SVG。无需报告分支、仓库写权限或统计用 Token，不调用 GitHub API。
 
 ## 接入
 
@@ -43,7 +43,7 @@ jobs:
 | `path` | `.` | 已 checkout 的仓库路径；相对路径基于 `github.workspace`，也可使用绝对路径 |
 | `ref` | `HEAD` | 本地 Git 分支、标签或 SHA；报告生成前固定为单个 SHA |
 | `sort` | `commits` | `commits`、`changes` 或 `user` |
-| `chart` | `'true'` | 完整下载报告是否包含贡献者卡片和按周趋势 SVG |
+| `chart` | `'true'` | Summary 是否展示卡片和活动柱状图，同时在下载报告中包含按周趋势 SVG |
 | `github-avatars` | `'true'` | 图表是否直接下载并嵌入 GitHub 头像；设为 `'false'` 可关闭，下载失败使用首字母 |
 | `avatar-users` | 空 | 多行 `email=username` 头像映射；需要开启图表和头像 |
 | `artifact-name` | `commit-report` | Artifact 名称；同一 workflow 中多次调用时须使用不同名称，例如包含 matrix 值 |
@@ -60,14 +60,16 @@ jobs:
     artifact-name: target-commit-report
 ```
 
-`chart` 和 `github-avatars` 仅接受 `'true'` 或 `'false'`。默认不输出统计口径，统计范围和作者聚合规则沿用 [`commits`](../../docs/commits.md)。Action 固定 SHA 后分别生成 Summary 表格和可选图表报告，可能扫描两次历史，但两份报告统计同一个提交快照。
+`chart` 和 `github-avatars` 仅接受 `'true'` 或 `'false'`。默认不输出统计口径，统计范围和作者聚合规则沿用 [`commits`](../../docs/commits.md)。Action 固定 SHA 后只采集一次，Summary 和下载报告复用同一份数据。
 
 ## 展示与下载
 
-- Job Summary 展示全部作者的 Markdown 表格，数值列右对齐，包含总计、统计 SHA 和采集时间。
+- Job Summary 默认展开全部作者的贡献卡片和活动柱状图，完整表格放在折叠区，数值列右对齐，包含总计、统计 SHA 和采集时间；`chart: 'false'` 时仅展示表格。
+- 所有卡片共享 UTC 时间范围和纵轴，最多 52 列；较长历史按连续若干周求和，悬停可查看时间段和提交数。下载 SVG 保持逐周面积图。
 - 超过 Summary 大小预算时仅展示全量总计，明确提示省略作者表，并附完整报告下载链接；不会将部分作者的计数作为全量结果。
 - Artifact 包含 `summary.md`、`report.md`，图表开启时另含 `report-<内容指纹>.svg`。下载解压后通过支持 Markdown 相对图片的查看器打开 `report.md`；提交到 GitHub 展示时需同时保留 SVG。
-- Summary 不引用 runner 上的本地 SVG，不内嵌 SVG 或 base64 图片。上传 Artifact 不会使本地图片自动在 Summary 中展示。
+- Summary 使用 HTML 和固定的 GitHub 官方静态方块图片绘制柱子，图片 URL 不携带报告数据。读者需要能访问 GitHub 静态图片；已获取头像使用对应 GitHub 头像 URL，其余显示首字母。关闭头像仍可展示柱状图。
+- Summary 不引用 runner 上的本地 SVG，不内嵌 SVG 或 base64 图片，也不依赖 Artifact 图片直链。无需额外图片存储分支或托管服务。
 - 下载链接继承仓库访问控制，访问者需要登录并具有仓库读取权限；Artifact 使用仓库默认保留期，过期后链接失效，不向外部图片服务发布报告。
 
 ## 输出

@@ -20,6 +20,9 @@ gh-report commits --ref main -f markdown > commits.md
 # 导出类似 Insights 的贡献者卡片和按周趋势（Markdown + SVG）
 gh-report commits --ref main -f markdown --chart -o report.md
 
+# 同一次采集另存可直接用于 GitHub Job Summary 的卡片和柱状图
+gh-report commits --ref main -f markdown --chart -o report.md --summary-output summary.md
+
 # 完全离线导出图表，使用首字母头像
 gh-report commits --ref main -f markdown --chart --github-avatars=false -o report.md
 
@@ -41,6 +44,7 @@ gh-report commits --ref main -f markdown --chart -o report.md \
 | `--github-avatars` | `true` | 仅图表模式联网获取并嵌入 GitHub 头像；设为 `false` 可完全离线，获取失败时保留首字母 |
 | `--avatar-user` | 无 | `email=username` 映射，可重复指定；仅影响头像，需要图表模式且不能关闭头像获取 |
 | `--output` / `-o` | stdout | 保存报告到指定文件；目标目录须已存在 |
+| `--summary-output` | 无 | 另存 GitHub Job Summary 专用 Markdown / HTML 卡片和活动柱状图；需要 `--chart`，不能与 `--output` 路径相同 |
 | `--show-rules` | `false` | 在表格或 Markdown 末尾显示统计口径；CSV / JSON 始终保留口径元数据 |
 
 未指定 `--ref` 时读取本地符号引用 `refs/remotes/origin/HEAD`，以它保存的默认分支名称优先选择本地 `refs/heads/<branch>`，缺失时使用 `refs/remotes/origin/<branch>`。这与 `contributors --local` 的本地分支优先级一致，但不查询 GitHub：缓存可能过期，命令不会刷新它。缺少缓存或对应分支时报错，提示显式指定 `--ref`，不改用当前检出的功能分支。不使用 `main`、`master` 等名称猜测默认分支。
@@ -84,7 +88,11 @@ Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时
 
 ### GitHub Actions
 
-使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`，向 Job Summary 写入表格并上传可下载的完整报告。图表仅放在 Artifact 中，避免 Summary 无法访问本地 SVG 相对路径。超过 Summary 大小预算时保留全量总计和下载链接；无需额外统计用 Token。
+使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`，在 Job Summary 直接展示贡献者卡片、活动柱状图和折叠表格，同时上传可下载的 Markdown + SVG 完整报告。无需报告分支、仓库写权限或额外统计用 Token。超过 Summary 大小预算时保留全量总计和下载链接。
+
+`--summary-output summary.md` 为同一份采集结果额外生成 Summary 专用视图，不重复扫描历史。它使用 GitHub 支持的 HTML 表格和固定官方静态图片绘制柱状图，不依赖内联 SVG、base64、本地文件或过期图片链接。所有贡献者共享 UTC 时间范围和纵轴，最多展示 52 列；历史较长时按连续若干周求和，分组宽度在图表上方标明，悬停柱子可查看时间段和提交数。该视图与 SVG 的按周面积图呈现方式不同，提交总量和增删行数一致。
+
+Summary 中的柱子需要读者能访问 GitHub 静态图片；图片 URL 固定，不携带仓库名、作者或统计数据。已成功获取头像的作者使用相同账号的 GitHub 头像 URL，其余显示首字母；`--github-avatars=false` 也会关闭 Summary 的远程头像。下载 SVG 继续嵌入头像快照，可以离线查看。
 
 ### GitHub 头像
 

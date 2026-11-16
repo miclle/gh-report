@@ -32,19 +32,20 @@ mkdir "$directory/report"
 )
 
 args=(commits --path "$target" --ref "$sha" --sort "${GH_REPORT_SORT:-commits}" -f markdown)
-"$directory/gh-report" "${args[@]}" -o "$directory/report/summary.md"
 if [[ "$chart" == true ]]; then
   avatar_args=("--github-avatars=$avatars")
   while IFS= read -r entry || [[ -n "$entry" ]]; do
     entry="${entry%$'\r'}"
     [[ -z "$entry" ]] || avatar_args+=(--avatar-user "$entry")
   done <<< "${GH_REPORT_AVATAR_USERS:-}"
-  "$directory/gh-report" "${args[@]}" --chart "${avatar_args[@]}" -o "$directory/report/report.md"
+  "$directory/gh-report" "${args[@]}" --chart "${avatar_args[@]}" -o "$directory/report/report.md" \
+    --summary-output "$directory/report/summary.md"
 else
   if [[ -n "${GH_REPORT_AVATAR_USERS:-}" ]]; then
     echo 'avatar-users 需要 chart=true。' >&2
     exit 1
   fi
+  "$directory/gh-report" "${args[@]}" -o "$directory/report/summary.md"
   cp "$directory/report/summary.md" "$directory/report/report.md"
 fi
 

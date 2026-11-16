@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -41,6 +42,7 @@ func newCommitsCmd() *cobra.Command {
 	cmd.Flags().Bool("github-avatars", true, "图表模式默认联网获取并嵌入 GitHub 头像；设为 false 可完全离线（无需 Token）")
 	cmd.Flags().StringArray("avatar-user", nil, "作者邮箱到 GitHub 用户名的映射: email=username（可重复，需 --chart）")
 	cmd.Flags().StringP("output", "o", "", "保存报告到文件；图表模式同时生成配套 SVG")
+	cmd.Flags().String("summary-output", "", "另存可直接展示卡片和柱状图的 GitHub Job Summary（需 --chart）")
 	return cmd
 }
 
@@ -78,6 +80,23 @@ func commitOptions(cmd *cobra.Command) (contribution.CommitOptions, string, erro
 	if chart && (format != "markdown" || output == "") {
 		return opts, "", fmt.Errorf("--chart 需要 -f markdown 和 --output 指定 Markdown 文件路径")
 	}
+	summaryOutput, _ := cmd.Flags().GetString("summary-output")
+	if summaryOutput != "" {
+		if !chart {
+			return opts, "", fmt.Errorf("--summary-output 需要 --chart")
+		}
+		outputPath, err := filepath.Abs(output)
+		if err != nil {
+			return opts, "", err
+		}
+		summaryPath, err := filepath.Abs(summaryOutput)
+		if err != nil {
+			return opts, "", err
+		}
+		if outputPath == summaryPath {
+			return opts, "", fmt.Errorf("--summary-output 不能与 --output 使用相同路径")
+		}
+	}
 	opts.Weekly = chart
 	switch format {
 	case "table", "markdown", "csv", "json":
@@ -99,12 +118,12 @@ func runCommits(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("提交统计失败，未输出部分报告: %w", err)
 	}
 	avatars, _ := cmd.Flags().GetBool("github-avatars")
+	entries, _ := cmd.Flags().GetStringArray("avatar-user")
+	users, err := contribution.ParseAvatarUsers(entries)
+	if err != nil {
+		return err
+	}
 	if opts.Weekly && avatars {
-		entries, _ := cmd.Flags().GetStringArray("avatar-user")
-		users, err := contribution.ParseAvatarUsers(entries)
-		if err != nil {
-			return err
-		}
 		loaded, avatarErr := contribution.LoadGitHubAvatars(ctx, report, users)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -120,7 +139,14 @@ func runCommits(cmd *cobra.Command, _ []string) error {
 	showRules, _ := cmd.Flags().GetBool("show-rules")
 	output, _ := cmd.Flags().GetString("output")
 	if output != "" {
-		return saveCommitReport(report, format, output, showRules, opts.Weekly)
+		if err := saveCommitReport(report, format, output, showRules, opts.Weekly); err != nil {
+			return err
+		}
+		summaryOutput, _ := cmd.Flags().GetString("summary-output")
+		if summaryOutput != "" {
+			return saveCommitJobSummary(report, summaryOutput, users, showRules)
+		}
+		return nil
 	}
 	return contribution.PrintCommits(cmd.OutOrStdout(), report, format, showRules)
 }

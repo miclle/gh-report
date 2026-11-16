@@ -47,6 +47,8 @@ func TestCommitsCommandWithoutToken(t *testing.T) {
 		{args: []string{"--chart"}, failure: "--chart 需要"},
 		{args: []string{"--chart", "-f", "markdown"}, failure: "--chart 需要"},
 		{args: []string{"--chart", "-f", "json", "-o", "report.md"}, failure: "--chart 需要"},
+		{args: []string{"--summary-output", "summary.md"}, failure: "--summary-output 需要 --chart"},
+		{args: []string{"--chart", "-f", "markdown", "-o", "report.md", "--summary-output", "./report.md"}, failure: "不能与 --output 使用相同路径"},
 		{args: []string{"--github-avatars"}, failure: "--github-avatars 需要 --chart"},
 		{args: []string{"--avatar-user", "alice@example.com=alice"}, failure: "--avatar-user 需要 --chart"},
 		{args: []string{"--chart", "--github-avatars=false", "--avatar-user", "alice@example.com=alice"}, failure: "--avatar-user 需要 --chart"},
@@ -75,6 +77,20 @@ func TestCommitsCommandWithoutToken(t *testing.T) {
 		var report contribution.CommitReport
 		if err := json.Unmarshal(out.Bytes(), &report); err != nil || report.Totals.Commits != 1 {
 			t.Fatalf("command failed offline: %v %s", err, out.String())
+		}
+	}
+	// 额外 Summary 与原始 Markdown / SVG 使用同一个快照和计数，完全离线导出。
+	output := filepath.Join(t.TempDir(), "report.md")
+	summaryOutput := filepath.Join(filepath.Dir(output), "summary.md")
+	command := newCommitsCmd()
+	command.SetArgs([]string{"--path", path, "--ref", "HEAD", "-f", "markdown", "--chart", "--github-avatars=false", "-o", output, "--summary-output", summaryOutput})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{output, summaryOutput} {
+		data, err := os.ReadFile(file)
+		if err != nil || !strings.Contains(string(data), "| TOTAL | | 1 | 1 | 0 | 1 |") {
+			t.Fatalf("inconsistent report %s: %v %s", file, err, data)
 		}
 	}
 }

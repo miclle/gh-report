@@ -17,7 +17,7 @@ if (( $(wc -c < "$source_file") + $(wc -c < "$footer_file") < 1000000 )); then
 else
   {
     printf '# 提交统计\n\n- HEAD：%s\n\n' "$GH_REPORT_HEAD_SHA"
-    printf '完整作者表超过 Job Summary 大小限制，下面仅展示全量总计；请下载完整报告查看全部作者。\n\n'
+    printf '完整报告超过 Job Summary 大小限制，下面仅展示全量总计；请下载完整报告查看全部作者及图表。\n\n'
     printf '| User | Name | Commits | +Lines | -Lines | Changes |\n'
     printf '| :--- | :--- | ---: | ---: | ---: | ---: |\n'
     awk '/^\| TOTAL \|/ { print }' "$source_file"

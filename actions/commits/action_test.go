@@ -122,6 +122,10 @@ func TestReportsAndSummary(t *testing.T) {
 			if !strings.Contains(summary, "| TOTAL | | 2 | 4 | 1 | 5 |") || !strings.Contains(summary, env["GH_REPORT_ARTIFACT_URL"]) || strings.Contains(summary, ".svg") {
 				t.Fatalf("invalid Job Summary:\n%s", summary)
 			}
+			hasChart := strings.Contains(summary, `<table><tbody>`) && strings.Contains(summary, `width="5" height=`) && strings.Contains(summary, "共享纵轴")
+			if hasChart != (chart == "true") {
+				t.Fatalf("chart=%s: wrong inline chart state: %s", chart, summary)
+			}
 		})
 	}
 }
