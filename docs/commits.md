@@ -88,11 +88,13 @@ Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时
 
 ### GitHub Actions
 
-使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`。图表沿用原版 SVG 贡献者卡片和逐周面积图；Job Summary 提供 SVG 原图入口、数据表格及完整报告下载链接。无需报告分支、对象存储、图床、仓库写权限或额外统计用 Token。
+使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`。设置 `report-branch: gh-report` 和 `contents: write` 后，完整 Markdown 和配套 SVG 保存到报告分支，原版图表直接内嵌在 Job Summary 中；无需对象存储、图床或额外 PAT。
 
-GitHub Job Summary 会过滤内联 SVG 和 data URL，不能通过相对路径显示 Artifact 内的图片。因此 Summary 使用原图链接，不将图表改成 HTML 柱状图。Action 使用 `actions/upload-artifact@v7` 的 `archive: false` 单独上传 SVG，免去解压步骤；原图与完整报告继承仓库访问控制和 Artifact 保留期。访问者需要登录且具有仓库读取权限，过期后链接失效。
+Summary 通过固定提交 SHA 的仓库图片地址展示原版贡献者卡片和逐周面积图，不依赖内联 SVG、base64、Artifact 相对路径或短期签名地址。新图表以内容指纹命名并追加提交，旧 Summary 保持原来的图表；相同图表复用已有文件。私有仓库的图片要求浏览器具有对应仓库的登录权限。`reports/<artifact-name>/` 直接展示最新完整报告，历史版本保留在 Git 提交中，Summary 也提供固定提交 SHA 的在线报告链接。报告分支内容会持续累积，不随 Artifact 过期而删除。
 
-`--summary-output summary.md` 从同一份采集结果额外生成纯 Markdown 数据表格，不重复扫描历史；Action 上传图表后再补入原图链接。下载报告中的 `report.md` 继续通过相对路径引用同目录 SVG，默认展开原版贡献图表并收起数据表格。超过 Summary 大小预算时保留全量总计及两个链接。
+Action 同时保留独立 SVG 和完整报告的 Artifact 入口。PR 验证只复用已发布的相同图表；分支未配置、图表尚未发布或写入失败时，Summary 保留原图链接和数据表格。只需要 Artifact 入口时可省略 `report-branch`，继续使用 `contents: read`。
+
+`--summary-output summary.md` 从同一份采集结果额外生成纯 Markdown 数据表格，不重复扫描历史；Action 发布图表后再补入内嵌图片和后备链接。下载报告中的 `report.md` 继续通过相对路径引用同目录 SVG，默认展开原版贡献图表并收起数据表格。超过 Summary 大小预算时保留全量总计、图表及链接。
 
 ### GitHub 头像
 

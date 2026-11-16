@@ -203,3 +203,48 @@ func TestArtifactNameCannotEscapeChartDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestSummaryEmbedsPinnedSVGAndKeepsFallbacks(t *testing.T) {
+	for _, oversized := range []bool{false, true} {
+		directory := t.TempDir()
+		if err := os.Mkdir(filepath.Join(directory, "report"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		document := "| TOTAL | | 99 | 100 | 10 | 110 |\n"
+		if oversized {
+			document = strings.Repeat("long author name ", 70000) + "\n" + document
+		}
+		writeFile(t, filepath.Join(directory, "report", "summary.md"), document)
+		summaryPath := filepath.Join(directory, "summary")
+		imageURL := "https://github.com/example/repo/raw/" + strings.Repeat("a", 40) + "/charts/chart.svg"
+		env := map[string]string{
+			"GH_REPORT_DIRECTORY": directory, "GH_REPORT_HEAD_SHA": strings.Repeat("b", 40),
+			"GH_REPORT_ARTIFACT_URL":    "https://github.com/example/repo/actions/runs/1/artifacts/2",
+			"GH_REPORT_CHART_URL":       "https://github.com/example/repo/actions/runs/1/artifacts/3",
+			"GH_REPORT_CHART_IMAGE_URL": imageURL, "GITHUB_STEP_SUMMARY": summaryPath,
+			"GH_REPORT_PUBLISHED_REPORT_URL": "https://github.com/example/repo/blob/sha/reports/commit-report/README.md",
+		}
+		if out, err := runScript(t, "summary.sh", env); err != nil {
+			t.Fatalf("summary: %v %s", err, out)
+		}
+		summary := readFile(t, summaryPath)
+		for _, want := range []string{"![贡献者提交统计](<" + imageURL + ">)", "/artifacts/2", "/artifacts/3", "| TOTAL | | 99 | 100 | 10 | 110 |", "[在线查看完整报告](" + env["GH_REPORT_PUBLISHED_REPORT_URL"] + ")"} {
+			if !strings.Contains(summary, want) {
+				t.Fatalf("missing %q in Summary", want)
+			}
+		}
+		if len(summary) >= 1000000 {
+			t.Fatal("summary exceeds size budget")
+		}
+		writeFile(t, summaryPath, "")
+		env["GH_REPORT_CHART_IMAGE_URL"] = ""
+		env["GH_REPORT_CHART_PUBLISH_OUTCOME"] = "failure"
+		if out, err := runScript(t, "summary.sh", env); err != nil {
+			t.Fatalf("fallback: %v %s", err, out)
+		}
+		summary = readFile(t, summaryPath)
+		if strings.Contains(summary, "![") || !strings.Contains(summary, "未能发布分支报告") || !strings.Contains(summary, "/artifacts/3") {
+			t.Fatal("failed publication must explain fallback and retain the original chart link")
+		}
+	}
+}

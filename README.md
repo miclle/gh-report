@@ -179,7 +179,7 @@ gh-report commits --ref main -f markdown --chart --github-avatars=false -o repor
 
 默认分支信息仅来自本地缓存；缺少 `origin/HEAD` 时需显式指定 `--ref`，不会猜测当前分支。按作者邮箱聚合，输出 commits、新增、删除及变更行数；支持 Table / Markdown / CSV / JSON。详细口径见[离线提交统计](docs/commits.md)。
 
-可在其他仓库的 GitHub Actions 中调用 [`actions/commits`](actions/commits/README.md)：checkout 完整历史后，在 Job Summary 提供原版 SVG 贡献图表入口和数据表格，并通过 Artifact 下载完整 Markdown 和 SVG 报告，无需报告分支、仓库写权限或统计用 Token。
+可在其他仓库的 GitHub Actions 中调用 [`actions/commits`](actions/commits/README.md)：checkout 完整历史后，通过 `report-branch: gh-report` 将原版 SVG 贡献图表内嵌在 Job Summary，同时展示数据表格并提供 Artifact 下载；报告分支需要 `contents: write`，无需外部图床或额外 PAT。
 
 ### 报告类型
 
