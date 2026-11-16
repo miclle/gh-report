@@ -154,6 +154,8 @@ RepoReport {
 
 ## 报告生成 — Summary 模式
 
+PR 展示状态由 `prDisplayState` 统一处理：有 `merged_at` 时为 `merged`，仅 `state=open` 且 `draft=true` 时为 `draft`，其余保留实际 `state`。GitHub 关闭草稿 PR 后可能仍保留 `draft=true`，不能用该标记覆盖关闭状态。计划来源 1 直接检查 `state=open` 且无 `merged_at`，不依赖展示状态；Summary 和 AI Prompt 共用此筛选。
+
 ### 工作条目 (extractWorkItems)
 
 以报告类型对应的 **cutoff** 时间为基准，从 collector 已过滤的数据中进一步筛选工作条目：

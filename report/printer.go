@@ -219,7 +219,7 @@ func prDisplayState(pr *gh.PullRequest) string {
 	if pr.MergedAt != nil {
 		return "merged"
 	}
-	if pr.GetDraft() {
+	if pr.GetState() == "open" && pr.GetDraft() {
 		return "draft"
 	}
 	return pr.GetState()
