@@ -119,17 +119,25 @@ func githubRemoteRepo(remoteURL string) string {
 	return path
 }
 
-func openLocalRepository(ctx context.Context, path, expectedRepo string) (*localRepository, error) {
+func openGitWorkspace(ctx context.Context, path string) (string, error) {
 	root, err := localGit(ctx, path, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return nil, fmt.Errorf("请在本地 Git 工作区内使用 --local: %w", err)
+		return "", fmt.Errorf("请在本地 Git 工作区内执行: %w", err)
 	}
 	shallow, err := localGit(ctx, root, "rev-parse", "--is-shallow-repository")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if shallow == "true" {
-		return nil, fmt.Errorf("本地仓库是浅克隆，无法统计全历史；请先补全历史后重试")
+		return "", fmt.Errorf("本地仓库是浅克隆，无法统计全历史；请先补全历史后重试")
+	}
+	return root, nil
+}
+
+func openLocalRepository(ctx context.Context, path, expectedRepo string) (*localRepository, error) {
+	root, err := openGitWorkspace(ctx, path)
+	if err != nil {
+		return nil, err
 	}
 	names, err := localGit(ctx, root, "remote")
 	if err != nil {

@@ -92,7 +92,8 @@ Projects v2 迭代信息，生成结构化的工作报告。支持日报、周�
 提供 CSV 原始数据输出和 Summary 模式，并可通过 AI API（支持 Anthropic
 Claude 和 OpenAI）直接生成报告。
 
-另提供 contributors 子命令，统计单仓库默认分支全历史贡献。
+另提供 contributors 子命令，统计单仓库默认分支全历史贡献；
+commits 子命令完全离线统计本地 Git 提交，无需 Token。
 不指定子命令时默认生成日报。`,
 	Example: `  # 使用配置文件生成日报（默认）
   gh-report -c config.yaml

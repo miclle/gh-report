@@ -26,7 +26,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 - `ai` — 统一 AI 客户端接口，支持 Anthropic Codex 和 OpenAI（手工 HTTP 实现，无 SDK 依赖）
 - `github` — GitHub REST API (via `go-github/v69`) + custom GraphQL client for Projects v2
 - `report` — Data collection (`collector.go` with `Progress` interface for UI feedback), CSV output (`printer.go`), summary/prompt generation (`summary.go`)
-- `contribution` — 单仓库默认分支全历史贡献采集、身份聚合和 Table / CSV / JSON 输出，由 `contributors` 子命令调用；`--local` 从本地 Git 读取 commits，Issue / PR 及身份关联仍走 API，独立于工作报告过滤与任务归并
+- `contribution` — 单仓库默认分支全历史贡献采集、身份聚合和 Table / CSV / JSON 输出，由 `contributors` 子命令调用；`commits` 子命令复用本地解析器，完全离线按邮箱统计提交和增删行数，不读取配置或 Token；`--local` 从本地 Git 读取 commits，Issue / PR 及身份关联仍走 API，独立于工作报告过滤与任务归并
 
 **Concurrency**: `report.Collect` uses three-level concurrency — org Projects vs repo data in parallel (separate WaitGroups), 4 API calls per repo in parallel, PR reviews in parallel. Progress is reported via the `Progress` interface (implemented by `cmd.progressBars` using mpb).
 
@@ -38,6 +38,7 @@ CLI tool that fetches GitHub activity (Issues, PRs, Comments, Reviews, Projects 
 - [docs/report-rules.md](docs/report-rules.md) — 报告业务规则（报告类型、工作/计划条目的纳入排除规则、状态映射）
 - [docs/report-generation.md](docs/report-generation.md) — 报告生成技术文档（数据流、并发模型、过滤层次）
 - [docs/contributors.md](docs/contributors.md) — 仓库贡献统计口径、身份归并、输出及失败行为
+- [docs/commits.md](docs/commits.md) — 完全离线的提交统计、默认 ref 选择和作者邮箱聚合
 
 ## Conventions
 

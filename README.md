@@ -149,6 +149,26 @@ gh-report contributors --local --sort changes
 
 `--local` 自动识别当前工作区的 GitHub remote，以 GitHub 默认分支名称选择本地分支，缺失时使用对应的本地跟踪分支。它不切换分支或自动 fetch，不支持浅克隆；仍需 GitHub Token 获取 Issue / PR 和关联作者身份。报告记录实际本地 ref 和 SHA，未提交修改及其他未合并分支不计入。
 
+### 离线提交统计
+
+只统计本地 Git 提交时，使用独立的 `commits` 命令，无需配置文件、Token 或网络：
+
+```bash
+# 从本地 origin/HEAD 确定默认分支，优先本地分支
+gh-report commits
+
+# 显式选择本地分支，按变更行数排序
+gh-report commits --ref main --sort changes
+
+# 无 remote 的仓库也可以使用；显式选择当前 HEAD
+gh-report commits --path /path/to/repo --ref HEAD -f json
+
+# 导出 Markdown，数值列右对齐
+gh-report commits --ref main -f markdown > commits.md
+```
+
+默认分支信息仅来自本地缓存；缺少 `origin/HEAD` 时需显式指定 `--ref`，不会猜测当前分支。按作者邮箱聚合，输出 commits、新增、删除及变更行数；支持 Table / Markdown / CSV / JSON。详细口径见[离线提交统计](docs/commits.md)。
+
 ### 报告类型
 
 通过子命令指定报告类型，不指定子命令时默认为日报：
@@ -319,6 +339,7 @@ gh-report/
 │   ├── monthly.go          # monthly 子命令
 │   ├── yearly.go           # yearly 子命令
 │   ├── contributors.go     # 仓库贡献统计子命令
+│   ├── commits.go          # 完全离线的本地提交统计子命令
 │   └── version.go          # version 子命令
 ├── ai/
 │   ├── ai.go               # AI 客户端统一接口、工厂函数
@@ -341,6 +362,7 @@ gh-report/
 │   └── tasks.go            # 任务归并、多来源链接与状态展示
 └── docs/
     ├── contributors.md     # 仓库贡献统计用法与口径
+    ├── commits.md          # 离线提交统计用法与口径
     ├── report-rules.md     # 报告业务规则
     └── report-generation.md # 报告生成技术文档
 ```

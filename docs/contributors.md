@@ -2,6 +2,8 @@
 
 `contributors` 统计单个仓库所有可识别参与者的贡献，默认输出终端表格。它独立于日报、周报等工作报告，不调用 AI，也不采集评论、Review 或 Projects。
 
+仅需本地提交数及增删行数、不需要 Issue / PR 时，可使用完全离线、无需 Token 的 [`commits`](commits.md) 命令。`contributors --local` 仍保留联网的完整贡献统计。
+
 ## 使用方式
 
 ```bash
