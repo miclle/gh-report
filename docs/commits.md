@@ -1,6 +1,6 @@
 # 离线提交统计
 
-`gh-report commits` 只读取本地 Git 历史，统计每个主作者的提交数、新增、删除和变更行数。无需 Token，不读取 YAML 配置，不查询 GitHub API 或下载对象；支持没有 remote、非 GitHub remote 的 Git 工作区。
+`gh-report commits` 只读取本地 Git 历史，统计每个主作者的提交数、新增、删除和变更行数。无需 Token，不读取 YAML 配置，普通报表不查询 GitHub API 或下载对象；支持没有 remote、非 GitHub remote 的 Git 工作区。图表模式默认联网获取并嵌入 GitHub 头像，使用 `--github-avatars=false` 可完全离线。
 
 ```bash
 # 从工作区或其子目录执行，读取本地保存的默认分支历史
@@ -16,6 +16,12 @@ gh-report commits --ref main -f json > commits.json
 
 # 导出 Markdown，数值列右对齐
 gh-report commits --ref main -f markdown > commits.md
+
+# 导出类似 Insights 的贡献者卡片和按周趋势（Markdown + SVG）
+gh-report commits --ref main -f markdown --chart -o report.md
+
+# 完全离线导出图表，使用首字母头像
+gh-report commits --ref main -f markdown --chart --github-avatars=false -o report.md
 ```
 
 ## 参数与范围
@@ -26,6 +32,9 @@ gh-report commits --ref main -f markdown > commits.md
 | `--ref` | 从本地 `origin/HEAD` 选择 | 一个本地分支、标签、SHA 或可解析为单个提交的引用，例如 `HEAD` |
 | `--format` / `-f` | `table` | `table`、`markdown`、`csv`、`json` |
 | `--sort` | `commits` | `commits`、`changes` 数字降序，或 `user` 邮箱升序 |
+| `--chart` | `false` | 用折叠区块同时展示贡献者图表和表格；需要 `-f markdown` 和 `--output` |
+| `--github-avatars` | `true` | 仅图表模式联网获取并嵌入 GitHub 头像；设为 `false` 可完全离线，获取失败时保留首字母 |
+| `--output` / `-o` | stdout | 保存报告到指定文件；目标目录须已存在 |
 | `--show-rules` | `false` | 在表格或 Markdown 末尾显示统计口径；CSV / JSON 始终保留口径元数据 |
 
 未指定 `--ref` 时读取本地符号引用 `refs/remotes/origin/HEAD`，以它保存的默认分支名称优先选择本地 `refs/heads/<branch>`，缺失时使用 `refs/remotes/origin/<branch>`。这与 `contributors --local` 的本地分支优先级一致，但不查询 GitHub：缓存可能过期，命令不会刷新它。缺少缓存或对应分支时报错，提示显式指定 `--ref`，不改用当前检出的功能分支。不使用 `main`、`master` 等名称猜测默认分支。
@@ -34,7 +43,7 @@ gh-report commits --ref main -f markdown > commits.md
 
 拒绝浅克隆；部分克隆缺少所需对象时失败，不允许 Git 隐式联网下载。使用者需要在执行前自行准备完整的本地历史。需要本机安装 Git。
 
-继承的工作报告参数（如 `--config`、`--token`、`--repos`、`--days`、`--user`、AI 参数）若被显式传入会报错。环境中的 Token 不会被读取。
+继承的工作报告参数（如 `--config`、`--repos`、`--days`、`--user`、AI 参数）若被显式传入会报错。`--token` 仅在头像模式可选使用。普通报表或关闭头像获取时不读取环境中的 Token；只有图表模式开启头像获取时支持可选的 `--token` 或 `GITHUB_TOKEN`。
 
 ## 统计口径
 
@@ -43,7 +52,7 @@ gh-report commits --ref main -f markdown > commits.md
 - 开启重命名识别，二进制、纯重命名及文件模式变更仍计提交，文本变更行数可为零。
 - 显式关闭 submodule 差异过滤、外部 diff、textconv、replace objects，并固定 Myers diff 算法，复用 `contributors --local` 的 NUL 分隔流式解析器。
 - 邮箱去除首尾空格并转小写后聚合，同邮箱不同名称合并；同名不同邮箱不合并。无邮箱则按提交保留独立身份。不应用 `.mailmap`。
-- 不关联 GitHub 账号，不依据名称猜测身份，不过滤 Bot；报告中的参与者表示 Git 作者邮箱身份。
+- 不按 GitHub 账号重新归并，不依据名称猜测身份，不过滤 Bot；报告中的参与者表示 Git 作者邮箱身份。可选头像获取只用于展示。
 
 数字同值时按邮箱、身份升序，输出稳定。不同数据源的行数对照应先确认 SHA 相同；本地 Git 与 GitHub 的 diff 结果可能有差异。
 
@@ -54,6 +63,26 @@ gh-report commits --ref main -f markdown > commits.md
 表格和 Markdown 默认隐藏口径说明；需要查看时使用 `gh-report commits --show-rules`（也可同时指定 `--ref`）。CSV / JSON 中的 `rules` 始终保留，便于导出后核对。
 
 Markdown 使用标准表格，作者及名称列左对齐，Commits、+Lines、-Lines、Changes 数值列右对齐，末尾含总计行。重定向 stdout 即可保存为 `.md` 文件；可加 `--show-rules` 附带统计口径。
+
+### 贡献者图表
+
+`--chart` 输出每位贡献者的卡片，包含姓名、邮箱、提交总量、新增 / 删除行数和按周提交数面积图。按已有 `--sort` 顺序排列，展示全部贡献者；不包含时间范围选择条。无贡献者时展示空状态。
+
+Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时提供“贡献图表”和“数据表格”：默认展开图表、收起表格，可分别展开查看。表格包含相同参与者、总计和右对齐数值列；头部元数据及可选口径说明只输出一次。
+
+活动时间使用提交的**作者时间**，转换为 UTC 后以周一 00:00 分周，沿用主作者身份聚合及 merge / 空提交排除规则。提交者时间不用于分周。所有卡片共享全历史时间范围和纵轴刻度，缺少活动的周按零绘制；只有一个活动周时，横轴前后各留一周空白。图表模式才额外保留周聚合数据，普通报表的采集与字段不变。
+
+例如 `-o report.md` 会生成 `report.md` 和同目录的 `report-<内容指纹>.svg`。Markdown 通过相对路径引用 SVG，保存、提交到 GitHub 或分享时需带上这两个文件。SVG 无需 JavaScript、网络或外部字体下载。文件名包含内容指纹，确保新图表写入后、Markdown 保存失败时，旧报告引用的图片仍可用；重复导出产生的不再引用的旧 SVG 可自行清理。
+
+图表模式需要指定 Markdown 文件路径，不能只重定向 stdout；其他格式及普通 Markdown 仍支持 stdout，也可通过 `--output` 保存。文件写入使用同目录临时文件后替换；失败会返回非零退出码，不覆盖尚未成功生成的新报告。
+
+### GitHub 头像
+
+`--chart` 默认获取并嵌入 GitHub 头像；用 `--github-avatars=false` 关闭后使用作者首字母头像，完全离线。开启头像获取时：自动匹配工作区的 GitHub remote，为每个作者选较早的代表提交，用 REST API 确认其 GitHub 主作者，再下载头像。它不使用邮箱搜索、不猜测账号，也不读取配置文件。公开提交可匿名查询，无需 Token；头像模式可选使用 `--token` > `GITHUB_TOKEN` 认证，以读取私有仓库或提高 API 额度。Token 只发送给 GitHub API，下载头像时不携带认证信息。
+
+头像规范化为 80 × 80 的 PNG 后直接嵌入 SVG，无需增加头像文件。分享 Markdown 与 SVG 后，读者无需联网获取头像；图片是导出时的快照，不会随 GitHub 头像更新自动变化。多个邮箱关联同一账号时复用下载的头像，但统计仍分属原邮箱，不改变作者归并或计数。
+
+支持 github.com 提交；私有仓库需要可选 Token 具备仓库 Contents 读取权限。仓库不可访问、仅存在本地的代表提交、未关联账号、非 GitHub remote、下载失败或 API 限流时保留首字母头像，继续输出完整本地统计；stderr 显示获取数量和错误摘要。匿名 REST API 通常每 IP 每小时最多 60 次请求，触及限制后停止后续头像查询，不等待额度恢复；只输出一行简短提示，自动使用首字母并继续生成报告，不打印完整 API 限流错误。Ctrl-C 会取消头像请求及本次导出。
 
 CSV 每行携带统计元数据，`record_type=user` 表示作者行，末尾 `record_type=total` 表示总计；再次汇总时应只读取作者行，避免重复相加。无参与者时 JSON `users=[]`，CSV 仍输出总计及元数据。
 

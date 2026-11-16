@@ -44,6 +44,10 @@ func TestCommitsCommandWithoutToken(t *testing.T) {
 		{args: []string{"--config", "missing.yaml"}, failure: "不支持 --config"},
 		{args: []string{"--token", "unused"}, failure: "不支持 --token"},
 		{args: []string{"--repos", "owner/repo"}, failure: "不支持 --repos"},
+		{args: []string{"--chart"}, failure: "--chart 需要"},
+		{args: []string{"--chart", "-f", "markdown"}, failure: "--chart 需要"},
+		{args: []string{"--chart", "-f", "json", "-o", "report.md"}, failure: "--chart 需要"},
+		{args: []string{"--github-avatars"}, failure: "--github-avatars 需要 --chart"},
 	} {
 		root := &cobra.Command{Use: "test", SilenceErrors: true, SilenceUsage: true}
 		root.PersistentFlags().String("config", "", "")

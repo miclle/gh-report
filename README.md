@@ -151,7 +151,7 @@ gh-report contributors --local --sort changes
 
 ### 离线提交统计
 
-只统计本地 Git 提交时，使用独立的 `commits` 命令，无需配置文件、Token 或网络：
+只统计本地 Git 提交时，使用独立的 `commits` 命令，默认无需配置文件、Token 或网络：
 
 ```bash
 # 从本地 origin/HEAD 确定默认分支，优先本地分支
@@ -165,6 +165,12 @@ gh-report commits --path /path/to/repo --ref HEAD -f json
 
 # 导出 Markdown，数值列右对齐
 gh-report commits --ref main -f markdown > commits.md
+
+# 用折叠区块同时展示图表和表格，默认获取并嵌入 GitHub 头像
+gh-report commits --ref main -f markdown --chart -o report.md
+
+# 完全离线导出图表，使用首字母头像
+gh-report commits --ref main -f markdown --chart --github-avatars=false -o report.md
 ```
 
 默认分支信息仅来自本地缓存；缺少 `origin/HEAD` 时需显式指定 `--ref`，不会猜测当前分支。按作者邮箱聚合，输出 commits、新增、删除及变更行数；支持 Table / Markdown / CSV / JSON。详细口径见[离线提交统计](docs/commits.md)。

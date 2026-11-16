@@ -3,15 +3,19 @@ package contribution
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/miclle/gh-report/github"
 )
 
 // CommitOptions 指定离线提交统计的工作区、引用和排序。
 type CommitOptions struct {
-	Path string
-	Ref  string
-	Sort string
+	Path   string
+	Ref    string
+	Sort   string
+	Weekly bool // 仅图表模式采集按周活动，避免普通报表额外保留趋势数据。
 }
 
 // Validate 检查离线统计支持的排序字段。
@@ -37,6 +41,15 @@ type CommitUser struct {
 	Identity string `json:"identity"`
 	Name     string `json:"name,omitempty"`
 	Email    string `json:"email,omitempty"`
+	CommitCounts
+	Weeks     []CommitWeek `json:"weeks,omitempty"`
+	sampleSHA string
+	avatarPNG []byte
+}
+
+// CommitWeek 保存以 UTC 周一为起点的作者提交统计；未活动的周不存储。
+type CommitWeek struct {
+	Week string `json:"week"`
 	CommitCounts
 }
 
@@ -71,8 +84,8 @@ func CollectCommits(ctx context.Context, opts CommitOptions) (*CommitReport, err
 	report := &CommitReport{StartedAt: time.Now().UTC(), Sort: opts.Sort, Rules: []string{
 		"统计所选本地 ref 固定 SHA 可达的全历史，仅计主作者，排除 merge 和空提交",
 		"新增和删除包含所有文本文件；变更行数为新增加删除，二进制、重命名及模式变更仍计提交",
-		"按去除首尾空格并转小写的作者邮箱聚合，无邮箱按提交单列；不查询 GitHub 身份，不应用 mailmap，不过滤 Bot",
-		"不联网、不切换分支、不 fetch；不包含未提交修改，不允许浅克隆或隐式下载缺失对象",
+		"按去除首尾空格并转小写的作者邮箱聚合，无邮箱按提交单列；不应用 mailmap，不过滤 Bot",
+		"提交统计不联网、不切换分支、不 fetch；不包含未提交修改，不允许浅克隆或隐式下载缺失对象",
 	}}
 	root, err := openGitWorkspace(ctx, opts.Path)
 	if err != nil {
@@ -99,14 +112,44 @@ func CollectCommits(ctx context.Context, opts CommitOptions) (*CommitReport, err
 	}
 	report.LocalPath, report.SourceRef, report.HeadSHA = root, ref, sha
 	a := newAccumulator()
-	if err := local.walkCommits(ctx, sha, a.addCommit); err != nil {
+	weeks := make(map[string]map[string]CommitCounts)
+	samples := make(map[string]string)
+	if err := local.walkCommits(ctx, sha, func(commit github.CommitActivity) error {
+		if err := a.addCommit(commit); err != nil {
+			return err
+		}
+		if !opts.Weekly || commit.Merge || commit.Empty {
+			return nil
+		}
+		identity := gitCommitIdentity(commit).Identity
+		// 留下较早的代表提交，提高该提交已公开到 GitHub 的可能性。
+		samples[identity] = commit.SHA
+		if weeks[identity] == nil {
+			weeks[identity] = make(map[string]CommitCounts)
+		}
+		date := commit.AuthoredAt.UTC()
+		monday := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -((int(date.Weekday()) + 6) % 7))
+		week := monday.Format(time.DateOnly)
+		counts := weeks[identity][week]
+		counts.Commits++
+		counts.Additions += commit.Additions
+		counts.Deletions += commit.Deletions
+		counts.Changes += commit.Additions + commit.Deletions
+		weeks[identity][week] = counts
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	stats := &Report{Sort: opts.Sort}
 	a.finish(stats)
 	report.Users = make([]CommitUser, 0, len(stats.Users))
 	for _, u := range stats.Users {
-		report.Users = append(report.Users, CommitUser{Identity: u.Identity, Name: u.Name, Email: u.Email, CommitCounts: commitCounts(u.Counts)})
+		user := CommitUser{Identity: u.Identity, Name: u.Name, Email: u.Email, CommitCounts: commitCounts(u.Counts), sampleSHA: samples[u.Identity]}
+		for week, counts := range weeks[u.Identity] {
+			user.Weeks = append(user.Weeks, CommitWeek{Week: week, CommitCounts: counts})
+		}
+		sort.Slice(user.Weeks, func(i, j int) bool { return user.Weeks[i].Week < user.Weeks[j].Week })
+		report.Users = append(report.Users, user)
 	}
 	report.Totals = commitCounts(stats.Totals)
 	report.CollectedAt = time.Now().UTC()

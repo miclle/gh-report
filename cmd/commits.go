@@ -14,16 +14,21 @@ func newCommitsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "commits",
 		Short: "离线统计本地 Git 仓库的提交数和增删行数，无需 Token",
-		Long: `按 Git 作者邮箱统计本地提交数、新增、删除及变更行数，完全离线，不读取配置文件或 Token。
+		Long: `按 Git 作者邮箱统计本地提交数、新增、删除及变更行数，提交统计完全离线，不读取配置文件。
 默认从本地 origin/HEAD 确定默认分支，优先本地分支，再使用 origin 的本地跟踪分支。
 无法确定默认分支时须传 --ref；支持本地分支、标签或 SHA，也可显式使用 HEAD。
 排除 merge 和空提交，不切换分支或 fetch，不支持浅克隆。只需本机 Git，不要求 GitHub remote。
-不查询 GitHub 身份、不应用 mailmap、不过滤 Bot；Issue / PR 统计请使用 contributors。`,
+不应用 mailmap、不过滤 Bot；Issue / PR 统计请使用 contributors。
+图表模式默认联网获取 GitHub 头像并嵌入 SVG，无需 Token；--github-avatars=false 可关闭头像获取。
+普通报表或关闭头像获取时完全离线，不读取 Token。
+头像模式可选 --token 或 GITHUB_TOKEN，用于私有仓库或提高 API 请求额度；Token 只发送给 GitHub API。
+头像不可用时保留首字母，不改变按邮箱归并的计数。`,
 		Example: `  gh-report commits
   gh-report commits --ref main --sort changes
   gh-report commits --path /path/to/repo --ref HEAD -f json
   gh-report commits --ref main -f csv > commits.csv
-  gh-report commits --ref main -f markdown > commits.md`,
+  gh-report commits --ref main -f markdown > commits.md
+  gh-report commits --ref main -f markdown --chart -o report.md`,
 		Args: cobra.NoArgs,
 		RunE: runCommits,
 	}
@@ -32,6 +37,9 @@ func newCommitsCmd() *cobra.Command {
 	cmd.Flags().StringP("format", "f", "table", "提交统计输出格式: table、markdown、csv、json")
 	cmd.Flags().String("sort", "commits", "排序: commits、changes、user（数字降序，用户升序）")
 	cmd.Flags().Bool("show-rules", false, "在表格或 Markdown 末尾显示统计口径（CSV / JSON 始终保留）")
+	cmd.Flags().Bool("chart", false, "在 Markdown 折叠区块中同时展示贡献者图表和表格（需 -f markdown 和 --output）")
+	cmd.Flags().Bool("github-avatars", true, "图表模式默认联网获取并嵌入 GitHub 头像；设为 false 可完全离线（无需 Token）")
+	cmd.Flags().StringP("output", "o", "", "保存报告到文件；图表模式同时生成配套 SVG")
 	return cmd
 }
 
@@ -40,7 +48,12 @@ func init() {
 }
 
 func commitOptions(cmd *cobra.Command) (contribution.CommitOptions, string, error) {
-	for _, name := range []string{"config", "token", "repos", "days", "user", "ai", "ai-provider", "ai-key", "ai-base-url", "model", "anthropic-key", "anthropic-base-url"} {
+	avatars, _ := cmd.Flags().GetBool("github-avatars")
+	chart, _ := cmd.Flags().GetBool("chart")
+	if cmd.Flags().Changed("token") && !(chart && avatars) {
+		return contribution.CommitOptions{}, "", fmt.Errorf("commits 不支持 --token；只有 --github-avatars 头像模式可选使用 Token")
+	}
+	for _, name := range []string{"config", "repos", "days", "user", "ai", "ai-provider", "ai-key", "ai-base-url", "model", "anthropic-key", "anthropic-base-url"} {
 		if cmd.Flags().Changed(name) {
 			return contribution.CommitOptions{}, "", fmt.Errorf("commits 不支持 --%s；只读取本地 Git，请使用 --path 和 --ref 指定范围", name)
 		}
@@ -53,6 +66,14 @@ func commitOptions(cmd *cobra.Command) (contribution.CommitOptions, string, erro
 		return opts, "", err
 	}
 	format, _ := cmd.Flags().GetString("format")
+	if cmd.Flags().Changed("github-avatars") && avatars && !chart {
+		return opts, "", fmt.Errorf("--github-avatars 需要 --chart")
+	}
+	output, _ := cmd.Flags().GetString("output")
+	if chart && (format != "markdown" || output == "") {
+		return opts, "", fmt.Errorf("--chart 需要 -f markdown 和 --output 指定 Markdown 文件路径")
+	}
+	opts.Weekly = chart
 	switch format {
 	case "table", "markdown", "csv", "json":
 		return opts, format, nil
@@ -72,6 +93,28 @@ func runCommits(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("提交统计失败，未输出部分报告: %w", err)
 	}
+	avatars, _ := cmd.Flags().GetBool("github-avatars")
+	if opts.Weekly && avatars {
+		token, _ := cmd.Flags().GetString("token")
+		if !cmd.Flags().Changed("token") {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		loaded, avatarErr := contribution.LoadGitHubAvatars(ctx, report, token)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if avatarErr != nil {
+			if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "GitHub 头像：%v；已获取 %d/%d，其余自动使用首字母头像，继续生成报告。\n", avatarErr, loaded, len(report.Users)); err != nil {
+				return err
+			}
+		} else if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "GitHub 头像：已获取 %d/%d；未获取的使用首字母头像。\n", loaded, len(report.Users)); err != nil {
+			return err
+		}
+	}
 	showRules, _ := cmd.Flags().GetBool("show-rules")
+	output, _ := cmd.Flags().GetString("output")
+	if output != "" {
+		return saveCommitReport(report, format, output, showRules, opts.Weekly)
+	}
 	return contribution.PrintCommits(cmd.OutOrStdout(), report, format, showRules)
 }

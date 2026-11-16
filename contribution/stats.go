@@ -1,4 +1,4 @@
-// Package contribution 提供仓库默认分支全历史贡献统计，支持 API 和本地 Git 提交采集。
+// Package contribution 提供仓库贡献统计及离线 Git 提交统计。
 package contribution
 
 import (
@@ -170,12 +170,7 @@ func (a *accumulator) addCommit(commit github.CommitActivity) error {
 	if user := commit.Author.User; user != nil && user.ID != "" {
 		identity = githubIdentity(user.ID, user.Login)
 	} else {
-		email := strings.ToLower(strings.TrimSpace(commit.Author.Email))
-		key := "git:" + email
-		if email == "" {
-			key = "git-commit:" + commit.SHA
-		}
-		identity = UserStats{Identity: key, Email: email, Name: commit.Author.Name, Kind: "git"}
+		identity = gitCommitIdentity(commit)
 	}
 	u := a.user(identity)
 	u.Commits++
@@ -183,6 +178,15 @@ func (a *accumulator) addCommit(commit github.CommitActivity) error {
 	u.Deletions += commit.Deletions
 	u.Changes += commit.Additions + commit.Deletions
 	return nil
+}
+
+func gitCommitIdentity(commit github.CommitActivity) UserStats {
+	email := strings.ToLower(strings.TrimSpace(commit.Author.Email))
+	key := "git:" + email
+	if email == "" {
+		key = "git-commit:" + commit.SHA
+	}
+	return UserStats{Identity: key, Email: email, Name: commit.Author.Name, Kind: "git"}
 }
 
 func (a *accumulator) addIssue(issue *gh.Issue) {

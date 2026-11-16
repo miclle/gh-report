@@ -84,8 +84,17 @@ func markdownText(value string) string {
 }
 
 func printCommitsMarkdown(w io.Writer, report *CommitReport, showRules bool) error {
-	if _, err := fmt.Fprintf(w, "# 提交统计\n\n- 工作区：%s\n- 本地 ref：%s\n- HEAD：%s\n- 采集时间：%s → %s\n- 排序：%s\n\n| User | Name | Commits | +Lines | -Lines | Changes |\n| :--- | :--- | ---: | ---: | ---: | ---: |\n",
-		markdownText(report.LocalPath), markdownText(report.SourceRef), markdownText(report.HeadSHA), report.StartedAt.Format(time.RFC3339), report.CollectedAt.Format(time.RFC3339), markdownText(report.Sort)); err != nil {
+	if err := printCommitsMarkdownHeader(w, report); err != nil {
+		return err
+	}
+	if err := printCommitsMarkdownTable(w, report); err != nil {
+		return err
+	}
+	return printCommitsMarkdownRules(w, report, showRules)
+}
+
+func printCommitsMarkdownTable(w io.Writer, report *CommitReport) error {
+	if _, err := fmt.Fprint(w, "| User | Name | Commits | +Lines | -Lines | Changes |\n| :--- | :--- | ---: | ---: | ---: | ---: |\n"); err != nil {
 		return err
 	}
 	for _, u := range report.Users {
@@ -101,6 +110,16 @@ func printCommitsMarkdown(w io.Writer, report *CommitReport, showRules bool) err
 	if _, err := fmt.Fprintln(w, "| TOTAL | | "+strings.Join(commitValues(report.Totals), " | ")+" |"); err != nil {
 		return err
 	}
+	return nil
+}
+
+func printCommitsMarkdownHeader(w io.Writer, report *CommitReport) error {
+	_, err := fmt.Fprintf(w, "# 提交统计\n\n- 工作区：%s\n- 本地 ref：%s\n- HEAD：%s\n- 采集时间：%s → %s\n- 排序：%s\n\n",
+		markdownText(report.LocalPath), markdownText(report.SourceRef), markdownText(report.HeadSHA), report.StartedAt.Format(time.RFC3339), report.CollectedAt.Format(time.RFC3339), markdownText(report.Sort))
+	return err
+}
+
+func printCommitsMarkdownRules(w io.Writer, report *CommitReport, showRules bool) error {
 	if showRules {
 		if _, err := fmt.Fprint(w, "\n统计口径：\n\n"); err != nil {
 			return err

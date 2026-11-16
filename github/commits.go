@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // BranchHead 保存采集开始时默认分支的名称和固定提交 SHA。
@@ -23,6 +24,7 @@ type CommitActivity struct {
 	Author               CommitAuthor
 	Additions, Deletions int64
 	Merge, Empty         bool
+	AuthoredAt           time.Time // 本地 Git 采集时保留作者时间，用于离线活动趋势。
 }
 
 const defaultBranchHeadQuery = `

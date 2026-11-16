@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miclle/gh-report/github"
 )
@@ -198,7 +199,7 @@ func (r *localRepository) walkCommits(ctx context.Context, sha string, visit fun
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := localGitCommand(ctx, r.path, "-c", "diff.algorithm=myers", "log", "--no-merges", "--root", "--numstat", "-z", "--find-renames=50%", "--ignore-submodules=none",
-		"--no-ext-diff", "--no-textconv", "--no-color", "--no-notes", "--no-show-signature", "--format=%x00GHREPORT-COMMIT%x00%H%x00%an%x00%ae%x00", sha, "--")
+		"--no-ext-diff", "--no-textconv", "--no-color", "--no-notes", "--no-show-signature", "--format=%x00GHREPORT-COMMIT%x00%H%x00%an%x00%ae%x00%at%x00", sha, "--")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
@@ -274,7 +275,15 @@ func readGitCommits(reader io.Reader, visit func(github.CommitActivity) error) e
 			if err != nil {
 				return fmt.Errorf("读取本地主作者邮箱: %w", err)
 			}
-			commit = github.CommitActivity{SHA: sha, Author: github.CommitAuthor{Name: name, Email: email}}
+			date, err := readField()
+			if err != nil {
+				return fmt.Errorf("读取本地主作者时间: %w", err)
+			}
+			seconds, err := strconv.ParseInt(date, 10, 64)
+			if err != nil {
+				return fmt.Errorf("本地提交 %s 的作者时间无效: %w", sha, err)
+			}
+			commit = github.CommitActivity{SHA: sha, Author: github.CommitAuthor{Name: name, Email: email}, AuthoredAt: time.Unix(seconds, 0).UTC()}
 			changed = false
 			continue
 		}

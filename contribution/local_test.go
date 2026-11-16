@@ -178,8 +178,8 @@ func TestLocalHistoryIncludesSubmodulesDespiteDiffConfig(t *testing.T) {
 func TestReadGitCommitsRejectsTruncation(t *testing.T) {
 	for _, input := range []string{
 		"\x00GHREPORT-COMMIT\x00sha\x00author\x00email",
-		"\x00GHREPORT-COMMIT\x00sha\x00author\x00email\x001\t0\tfile",
-		"\x00GHREPORT-COMMIT\x00sha\x00author\x00email\x000\t0\t\x00old\x00",
+		"\x00GHREPORT-COMMIT\x00sha\x00author\x00email\x000\x001\t0\tfile",
+		"\x00GHREPORT-COMMIT\x00sha\x00author\x00email\x000\x000\t0\t\x00old\x00",
 	} {
 		if err := readGitCommits(strings.NewReader(input), func(github.CommitActivity) error { return nil }); err == nil {
 			t.Fatalf("truncated input must fail: %q", input)
