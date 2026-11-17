@@ -49,30 +49,30 @@ func PrintCommitsChart(w io.Writer, report *CommitReport) error {
 	if !first.IsZero() && first.Equal(last) {
 		first, last = first.Add(-chartWeek), last.Add(chartWeek)
 	}
-	const margin, gap, cardWidth, cardHeight, top = 24, 20, 546, 266, 100
+	const marginX, gapX, marginY, gapY, cardWidth, cardHeight, top = 8, 12, 24, 20, 546, 266, 100
 	columns := 2
 	if len(report.Users) < 2 {
 		columns = 1
 	}
-	width := 2*margin + columns*cardWidth + (columns-1)*gap
+	width := 2*marginX + columns*cardWidth + (columns-1)*gapX
 	rows := (len(report.Users) + columns - 1) / columns
-	height := top + rows*(cardHeight+gap) + margin
+	height := top + rows*(cardHeight+gapY) + marginY
 	if rows == 0 {
 		height = 180
 	}
 	var svg strings.Builder
 	fmt.Fprintf(&svg, `<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-labelledby="title description">`, width, height, width, height)
 	svg.WriteString(`<title id="title">Contributors</title><desc id="description">贡献者提交总量、增删行数和按周提交趋势；所有卡片使用相同的 UTC 时间范围和纵轴刻度。</desc><style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC",sans-serif;fill:#1f2328}.muted{fill:#656d76}.small{font-size:11px}.axis{fill:#656d76;font-size:10px}</style>`)
-	fmt.Fprintf(&svg, `<rect width="%d" height="%d" fill="#ffffff"/><text x="24" y="32" font-size="22" font-weight="600">Contributors</text>`, width, height)
-	fmt.Fprintf(&svg, `<text x="24" y="56" font-size="13" class="muted">%d contributors · %d commits · +%d / −%d lines</text>`, len(report.Users), report.Totals.Commits, report.Totals.Additions, report.Totals.Deletions)
+	fmt.Fprintf(&svg, `<rect width="%d" height="%d" fill="#ffffff"/><text x="%d" y="32" font-size="22" font-weight="600">Contributors</text>`, width, height, marginX)
+	fmt.Fprintf(&svg, `<text x="%d" y="56" font-size="13" class="muted">%d contributors · %d commits · +%d / −%d lines</text>`, marginX, len(report.Users), report.Totals.Commits, report.Totals.Additions, report.Totals.Deletions)
 	if rows == 0 {
-		svg.WriteString(`<text x="24" y="118" font-size="14" class="muted">没有符合统计口径的提交</text>`)
+		fmt.Fprintf(&svg, `<text x="%d" y="118" font-size="14" class="muted">没有符合统计口径的提交</text>`, marginX)
 	} else {
-		fmt.Fprintf(&svg, `<text x="24" y="77" class="small muted">%s — %s · Weekly commits · UTC · Shared scale</text>`, first.Format(time.DateOnly), last.Format(time.DateOnly))
+		fmt.Fprintf(&svg, `<text x="%d" y="77" class="small muted">%s — %s · Weekly commits · UTC · Shared scale</text>`, marginX, first.Format(time.DateOnly), last.Format(time.DateOnly))
 	}
 	scale := chartMaximum(maximum)
 	for i, user := range report.Users {
-		x, y := margin+(i%2)*(cardWidth+gap), top+(i/2)*(cardHeight+gap)
+		x, y := marginX+(i%2)*(cardWidth+gapX), top+(i/2)*(cardHeight+gapY)
 		fmt.Fprintf(&svg, `<g transform="translate(%d %d)">`, x, y)
 		fmt.Fprintf(&svg, `<rect width="%d" height="%d" rx="8" fill="#ffffff" stroke="#d1d9e0"/>`, cardWidth, cardHeight)
 		name, email := user.Name, user.Email
