@@ -33,12 +33,11 @@ git init -q "$directory"
 git -C "$directory" config user.name 'github-actions[bot]'
 git -C "$directory" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git -C "$directory" remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+report_path="reports/$name"
 image_path=''
 if [[ -n "${GH_REPORT_CHART_FILE:-}" ]]; then
-  digest="$(git -C "$directory" hash-object --no-filters "$GH_REPORT_CHART_FILE")"
-  image_path="charts/$digest.svg"
+  image_path="$report_path/chart.svg"
 fi
-report_path="reports/$name"
 marker='gh-report report branch v1'
 
 # 对报告名称逐字节编码，确保空格、中文等合法 Artifact 名称可用于 GitHub URL。
@@ -56,7 +55,7 @@ url_component() {
 
 output_image() {
   if [[ -n "$image_path" ]]; then
-    printf 'chart-image-url=%s/%s/raw/%s/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$1" "$image_path" >> "$GITHUB_OUTPUT"
+    printf 'chart-image-url=%s/%s/raw/%s/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$1" "reports/$(url_component "$name")/chart.svg" >> "$GITHUB_OUTPUT"
   fi
 }
 
@@ -83,34 +82,38 @@ for attempt in 1 2 3; do
     echo '报告分支的发布路径不能是符号链接。' >&2
     exit 1
   fi
-  if [[ -n "$image_path" && -f "$directory/$image_path" ]]; then
-    if ! cmp -s "$GH_REPORT_CHART_FILE" "$directory/$image_path"; then
-      echo '报告分支中的图表内容与指纹不符，拒绝复用。' >&2
-      exit 1
-    fi
-  fi
   if [[ "${GH_REPORT_READ_ONLY:-false}" == true ]]; then
-    if [[ -n "$image_path" && -f "$directory/$image_path" ]]; then
+    if [[ -n "$image_path" && -f "$directory/$image_path" ]] && cmp -s "$GH_REPORT_CHART_FILE" "$directory/$image_path"; then
       output_image "$(git -C "$directory" rev-parse HEAD)"
       exit 0
+    fi
+    # 兼容尚未升级发布的报告分支，旧版图片仍可按内容指纹复用。
+    if [[ -n "$image_path" ]]; then
+      digest="$(git -C "$directory" hash-object --no-filters "$GH_REPORT_CHART_FILE")"
+      legacy_path="charts/$digest.svg"
+      if [[ -f "$directory/$legacy_path" && ! -L "$directory/$legacy_path" ]] && cmp -s "$GH_REPORT_CHART_FILE" "$directory/$legacy_path"; then
+        printf 'chart-image-url=%s/%s/raw/%s/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$(git -C "$directory" rev-parse HEAD)" "$legacy_path" >> "$GITHUB_OUTPUT"
+        exit 0
+      fi
     fi
     echo 'PR 验证只复用已发布的图表；本次报告不写入分支，保留 Artifact 入口。' >&2
     exit 1
   fi
 
-  if [[ -n "$image_path" ]]; then
-    mkdir -p "$directory/charts"
-    cp "$GH_REPORT_CHART_FILE" "$directory/$image_path"
-    git -C "$directory" add -- "$image_path"
-  fi
-  # 只替换当前名称的报告；其他任务的报告及历史 SVG 保留。
+  # 旧 Summary 固定引用历史提交，当前分支可移除旧版累积的图表目录。
+  git -C "$directory" rm -r -q --ignore-unmatch -- charts
+  # 每份报告只保留固定名称的 SVG，其他名称的报告由各自发布任务更新。
   rm -rf "${directory:?}/${report_path:?}"
   mkdir -p "$directory/$report_path"
-  cp -R "$GH_REPORT_REPORT_DIRECTORY/." "$directory/$report_path/"
-  cp "$GH_REPORT_REPORT_DIRECTORY/report.md" "$directory/$report_path/README.md"
+  cp "$GH_REPORT_REPORT_DIRECTORY/summary.md" "$directory/$report_path/summary.md"
   if [[ -n "$image_path" ]]; then
-    cp "$GH_REPORT_CHART_FILE" "$directory/$report_path/chart.svg"
+    cp "$GH_REPORT_CHART_FILE" "$directory/$image_path"
+    sed 's@^!\[贡献者提交统计\](<\./[^>]*\.svg>)$@![贡献者提交统计](<./chart.svg>)@' \
+      "$GH_REPORT_REPORT_DIRECTORY/report.md" > "$directory/$report_path/report.md"
+  else
+    cp "$GH_REPORT_REPORT_DIRECTORY/report.md" "$directory/$report_path/report.md"
   fi
+  cp "$directory/$report_path/report.md" "$directory/$report_path/README.md"
   git -C "$directory" add -- .gh-report README.md "$report_path"
   if ! git -C "$directory" diff --cached --quiet; then
     git -C "$directory" -c commit.gpgsign=false commit -q -s -m 'docs(report): 发布完整提交贡献报告'

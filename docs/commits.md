@@ -90,9 +90,9 @@ Markdown 使用 GitHub 支持的 `<details>` / `<summary>` 折叠区块，同时
 
 使用 [`actions/commits`](../actions/commits/README.md) 可在其他仓库的 workflow 中运行统计：调用仓库先以 `fetch-depth: 0` checkout，Action 默认统计 `HEAD`。设置 `report-branch: gh-report` 和 `contents: write` 后，完整 Markdown 和配套 SVG 保存到报告分支，原版图表直接内嵌在 Job Summary 中；无需对象存储、图床或额外 PAT。
 
-Summary 通过固定提交 SHA 的仓库图片地址展示原版贡献者卡片和逐周面积图，不依赖内联 SVG、base64、Artifact 相对路径或短期签名地址。新图表以内容指纹命名并追加提交，旧 Summary 保持原来的图表；相同图表复用已有文件。私有仓库的图片要求浏览器具有对应仓库的登录权限。`reports/<artifact-name>/` 直接展示最新完整报告，历史版本保留在 Git 提交中，Summary 也提供固定提交 SHA 的在线报告链接。报告分支内容会持续累积，不随 Artifact 过期而删除。
+Summary 通过固定提交 SHA 的仓库图片地址展示原版贡献者卡片和逐周面积图，不依赖内联 SVG、base64、Artifact 相对路径或短期签名地址。报告分支中每份报告只保存 `reports/<artifact-name>/chart.svg`，每次更新追加提交，旧 Summary 通过固定 SHA 保持原来的图表。私有仓库的图片要求浏览器具有对应仓库的登录权限。`reports/<artifact-name>/` 直接展示最新完整报告，历史版本保留在 Git 提交中，Summary 也提供固定提交 SHA 的在线报告链接。发布时会移除旧版 `charts/` 目录，并清理本次报告目录中的带指纹 SVG；历史版本保留在 Git 提交中，当前目录文件数不随运行次数增加。
 
-开启图表并成功发布报告分支时，还会保存固定文件 `reports/<artifact-name>/chart.svg`，供默认分支的 README 或 Contributing 引用最新图表。使用报告分支 URL 即可随发布自动更新，GitHub 图片缓存可能带来显示延迟；引用示例见 [Action 文档](../actions/commits/README.md#在-readme-或-contributing-中展示最新图表)。
+开启图表并成功发布报告分支时，保存固定文件 `reports/<artifact-name>/chart.svg`，供默认分支的 README 或 Contributing 引用最新图表。使用报告分支 URL 即可随发布自动更新，GitHub 图片缓存可能带来显示延迟；引用示例见 [Action 文档](../actions/commits/README.md#在-readme-或-contributing-中展示最新图表)。
 
 Action 同时保留独立 SVG 和完整报告的 Artifact 入口。PR 验证默认只复用已发布的相同图表；受信任且 Token 已有写权限的 PR 可设置 `publish-on-pr: 'true'`，由 Action 自动创建报告分支并发布完整报告。分支未配置、图表尚未发布或写入失败时，Summary 保留原图链接和数据表格。只需要 Artifact 入口时可省略 `report-branch`，继续使用 `contents: read`。
 

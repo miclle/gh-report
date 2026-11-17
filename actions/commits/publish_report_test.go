@@ -54,8 +54,7 @@ func TestPublishOriginalChartToIsolatedBranch(t *testing.T) {
 	env, remote, directory := publisherFixture(t)
 	url := publishedURL(t, env)
 	sha := git(t, directory, "--git-dir", remote, "rev-parse", "refs/heads/gh-report")
-	digest := git(t, directory, "hash-object", env["GH_REPORT_CHART_FILE"])
-	wantURL := env["GITHUB_SERVER_URL"] + "/owner/repo/raw/" + sha + "/charts/" + digest + ".svg"
+	wantURL := env["GITHUB_SERVER_URL"] + "/owner/repo/raw/" + sha + "/reports/team%20report/chart.svg"
 	if url != wantURL {
 		t.Fatalf("image URL must pin a commit: got %s, want %s", url, wantURL)
 	}
@@ -74,7 +73,7 @@ func TestPublishOriginalChartToIsolatedBranch(t *testing.T) {
 	if git(t, directory, "--git-dir", remote, "rev-list", "--count", sha) != "1" {
 		t.Fatal("report branch must start without source history")
 	}
-	if got := git(t, directory, "--git-dir", remote, "show", sha+":charts/"+digest+".svg"); got != readFile(t, env["GH_REPORT_CHART_FILE"]) {
+	if got := git(t, directory, "--git-dir", remote, "show", sha+":reports/team report/chart.svg"); got != readFile(t, env["GH_REPORT_CHART_FILE"]) {
 		t.Fatal("published SVG differs from original")
 	}
 	if publishedURL(t, env) != url {
@@ -95,7 +94,7 @@ func TestPublishOriginalChartToIsolatedBranch(t *testing.T) {
 		t.Fatal("changed report must append a new commit")
 	}
 	// 旧报告继续使用其原始提交，不能随最新报告变化。
-	if got := git(t, directory, "--git-dir", remote, "show", sha+":charts/"+digest+".svg"); !strings.Contains(got, "original area chart") {
+	if got := git(t, directory, "--git-dir", remote, "show", sha+":reports/team report/chart.svg"); !strings.Contains(got, "original area chart") {
 		t.Fatal("old report image was lost")
 	}
 }
@@ -122,13 +121,13 @@ func TestPublishRejectsOrdinaryBranchAndMissingReadOnlyBranch(t *testing.T) {
 
 func TestPublishStableChartTracksLatestReport(t *testing.T) {
 	env, remote, directory := publisherFixture(t)
-	// 使用带指纹的源文件，固定名称必须由发布阶段额外生成。
+	// 模拟 CLI 的带指纹文件，发布后应只保留一个固定名称的图表。
 	chart := filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report-first.svg")
 	if err := os.Rename(env["GH_REPORT_CHART_FILE"], chart); err != nil {
 		t.Fatal(err)
 	}
 	env["GH_REPORT_CHART_FILE"] = chart
-	writeFile(t, filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report.md"), "![chart](./report-first.svg)\n")
+	writeFile(t, filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report.md"), "![贡献者提交统计](<./report-first.svg>)\n")
 	first := readFile(t, chart)
 	firstURL := publishedURL(t, env)
 	firstSHA := git(t, directory, "--git-dir", remote, "rev-parse", "gh-report")
@@ -136,7 +135,18 @@ func TestPublishStableChartTracksLatestReport(t *testing.T) {
 	if got := git(t, directory, "--git-dir", remote, "show", "gh-report:"+stablePath); got != first {
 		t.Fatal("stable chart must be created from the current SVG")
 	}
-	git(t, directory, "--git-dir", remote, "cat-file", "-e", "gh-report:reports/team report/report-first.svg")
+	files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report")
+	if strings.Count(files, ".svg") != 1 || !strings.Contains(files, stablePath) {
+		t.Fatalf("expected exactly one SVG: %s", files)
+	}
+	for _, name := range []string{"README.md", "report.md"} {
+		if got := git(t, directory, "--git-dir", remote, "show", "gh-report:reports/team report/"+name); got != "![贡献者提交统计](<./chart.svg>)" {
+			t.Fatalf("report must link to the fixed SVG: %s", got)
+		}
+	}
+	if !strings.Contains(readFile(t, filepath.Join(env["GH_REPORT_REPORT_DIRECTORY"], "report.md")), "report-first.svg") {
+		t.Fatal("artifact source must remain unchanged")
+	}
 
 	second := "<svg>updated chart</svg>"
 	writeFile(t, chart, second)
@@ -181,12 +191,13 @@ func TestConcurrentChartPublishPreservesBothReports(t *testing.T) {
 		})
 	}
 	t.Cleanup(func() {
-		files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report", "charts/")
-		if len(strings.Split(files, "\n")) != 3 {
+		files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report", "reports/")
+		if strings.Count(files, ".svg") != 3 {
 			t.Fatalf("concurrent publish lost a report: %s", files)
 		}
 		for _, name := range []string{"team report", "one", "two"} {
 			git(t, directory, "--git-dir", remote, "cat-file", "-e", "gh-report:reports/"+name+"/README.md")
+			git(t, directory, "--git-dir", remote, "cat-file", "-e", "gh-report:reports/"+name+"/chart.svg")
 		}
 	})
 }
@@ -207,5 +218,44 @@ func TestPublishTableOnlyReport(t *testing.T) {
 	files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report")
 	if strings.Contains(files, ".svg") || !strings.Contains(files, "reports/team report/README.md") {
 		t.Fatalf("wrong published files: %s", files)
+	}
+}
+
+func TestPublishMigratesLegacyCharts(t *testing.T) {
+	env, remote, directory := publisherFixture(t)
+	publishedURL(t, env)
+	checkout := filepath.Join(directory, "legacy")
+	git(t, directory, "clone", "--branch", "gh-report", remote, checkout)
+	git(t, checkout, "config", "user.name", "Test")
+	git(t, checkout, "config", "user.email", "test@example.com")
+	if err := os.Mkdir(filepath.Join(checkout, "charts"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	digest := git(t, directory, "hash-object", env["GH_REPORT_CHART_FILE"])
+	legacyPath := "charts/" + digest + ".svg"
+	writeFile(t, filepath.Join(checkout, legacyPath), readFile(t, env["GH_REPORT_CHART_FILE"]))
+	writeFile(t, filepath.Join(checkout, "charts/older.svg"), "<svg>older</svg>")
+	git(t, checkout, "mv", "reports/team report/chart.svg", "reports/team report/report-old.svg")
+	writeFile(t, filepath.Join(checkout, "reports/team report/report.md"), "![贡献者提交统计](<./report-old.svg>)\n")
+	git(t, checkout, "add", ".")
+	git(t, checkout, "commit", "-m", "legacy report layout")
+	git(t, checkout, "push", "origin", "gh-report")
+	legacySHA := git(t, checkout, "rev-parse", "HEAD")
+
+	env["GH_REPORT_READ_ONLY"] = "true"
+	if url := publishedURL(t, env); !strings.HasSuffix(url, "/"+legacySHA+"/"+legacyPath) {
+		t.Fatalf("read-only run must reuse the legacy image: %s", url)
+	}
+	if got := git(t, directory, "--git-dir", remote, "rev-parse", "gh-report"); got != legacySHA {
+		t.Fatal("read-only reuse modified the branch")
+	}
+	env["GH_REPORT_READ_ONLY"] = "false"
+	publishedURL(t, env)
+	files := git(t, directory, "--git-dir", remote, "ls-tree", "-r", "--name-only", "gh-report")
+	if strings.Contains(files, "charts/") || strings.Contains(files, "report-old.svg") || strings.Count(files, ".svg") != 1 {
+		t.Fatalf("legacy images remain in the latest tree: %s", files)
+	}
+	if got := git(t, directory, "--git-dir", remote, "show", legacySHA+":"+legacyPath); got != readFile(t, env["GH_REPORT_CHART_FILE"]) {
+		t.Fatal("legacy Summary image must remain available at its original commit")
 	}
 }

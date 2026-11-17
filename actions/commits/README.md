@@ -72,14 +72,14 @@ jobs:
 - 配置 `report-branch: gh-report` 后，Job Summary 顶部直接内嵌 SVG 卡片和面积图，保留“查看 SVG 原图”后备入口，下方展示全部作者的数据表格，数值列右对齐，包含总计、统计 SHA 和采集时间。`chart: 'false'` 时只展示数据表格及完整报告下载链接。
 - SVG 原图以 `<artifact-name>.svg` 单独上传，使用 `archive: false`，无需下载 ZIP 后解压；它与完整报告中的 SVG 内容完全相同。
 - 完整报告 Artifact 包含 `summary.md`、`report.md`，图表开启时另含 `report-<内容指纹>.svg`。下载解压后通过支持 Markdown 相对图片的查看器打开 `report.md`；提交到 GitHub 展示时需同时保留 SVG。
-- Summary 使用 `https://github.com/<owner>/<repo>/raw/<commit-sha>/charts/<内容指纹>.svg` 作为图片地址，不使用内联 SVG、base64 或短期签名地址。图片仍是同一份原版 SVG，不另外生成柱状图。私有仓库的图片需要浏览器具有相应的 GitHub 登录权限。
+- Summary 使用 `https://github.com/<owner>/<repo>/raw/<commit-sha>/reports/<artifact-name>/chart.svg` 作为图片地址，不使用内联 SVG、base64 或短期签名地址。图片仍是同一份原版 SVG，不另外生成柱状图。私有仓库的图片需要浏览器具有相应的 GitHub 登录权限。
 - 超过 Summary 大小预算时仅展示全量总计，同时保留内嵌图表、原图和完整报告链接；不会将部分作者的计数作为全量结果。
 - 两个 Artifact 均继承仓库访问控制和默认保留期；访问者需要登录并具有仓库读取权限，过期后链接失效。报告分支中的文件遵循仓库访问权限，不会随 Artifact 过期而删除。
 - `reports/<artifact-name>/README.md` 在 GitHub 分支目录中直接展示完整报告，旁边保留原始 `report.md`、`summary.md` 和配套 SVG。Summary 的“在线查看完整报告”链接固定到本次发布的提交。
 
 ### 在 README 或 Contributing 中展示最新图表
 
-开启图表并成功发布报告分支时，Action 额外保存 `reports/<artifact-name>/chart.svg`。固定文件名随该报告的每次发布更新，可在默认分支的 README 或 Contributing 中配置一次图片引用：
+开启图表并成功发布报告分支时，Action 保存 `reports/<artifact-name>/chart.svg`。固定文件名随该报告的每次发布更新，可在默认分支的 README 或 Contributing 中配置一次图片引用：
 
 ```markdown
 ![贡献统计](https://github.com/OWNER/REPO/raw/refs/heads/gh-report/reports/commit-report/chart.svg)
@@ -89,13 +89,13 @@ jobs:
 
 将 `OWNER/REPO` 替换为目标仓库，将 `gh-report` 和 `commit-report` 分别替换为 `report-branch` 和 `artifact-name` 的实际值；名称包含空格等特殊字符时需进行 URL 编码。图片使用分支路径，后续发布无需更新引用文档。GitHub 图片缓存可能导致新图表稍后显示，私有仓库仍要求访问者具有读取权限。
 
-`chart.svg` 只在报告分支发布时生成，原有带指纹的 SVG 和 Artifact 文件保持原有布局。Actions Summary 继续引用固定提交 SHA 的图片地址，保留每次运行的历史图表。只读 PR 复用不会更新固定文件；关闭图表后再次成功发布同名报告，会移除该报告目录中旧的 `chart.svg`。
+报告分支中每份报告只保存一个 `chart.svg`，`report.md` 和 `README.md` 都引用它。CLI 导出和 Artifact 包继续使用各自带指纹的 SVG。Actions Summary 继续引用固定提交 SHA 的图片地址，保留每次运行的历史图表。只读 PR 复用不会更新固定文件；关闭图表后再次成功发布同名报告，会移除该报告目录中旧的 `chart.svg`。
 
 ## 报告分支与权限
 
-`gh-report` 是独立的报告发布分支。首次发布从空树创建，包含用途标记 `.gh-report`、说明、`charts/` 中的 SVG 和 `reports/` 中的完整报告，不复制源代码历史。已有分支必须带有匹配的用途标记，防止误写业务分支。图表以内容指纹命名，相同内容复用已有文件；`reports/<artifact-name>/` 展示该名称的最新完整报告，历史版本保留在 Git 提交中。每次报告更新追加普通提交，不强推，遇到并发冲突重新读取远端后重试。
+`gh-report` 是独立的报告发布分支。首次发布从空树创建，包含用途标记 `.gh-report`、说明和 `reports/` 中的完整报告，不复制源代码历史。已有分支必须带有匹配的用途标记，防止误写业务分支。图表固定命名为 `chart.svg`，每次发布替换同一路径；`reports/<artifact-name>/` 展示该名称的最新完整报告，历史版本保留在 Git 提交中。每次报告更新追加普通提交，不强推，遇到并发冲突重新读取远端后重试。
 
-每份 Summary 引用固定提交 SHA 下的 SVG 和完整报告，后续更新不会改变旧 Summary 对应的内容。不同报告名称使用独立目录，并发发布不会覆盖其他名称的报告。不要删除报告分支或重写其历史；报告图片及历史会持续累积。
+每份 Summary 引用固定提交 SHA 下的 SVG 和完整报告，后续更新不会改变旧 Summary 对应的内容。不同报告名称使用独立目录，并发发布不会覆盖其他名称的报告。升级后首次成功写入会移除当前分支旧的 `charts/` 目录，并将本次报告目录整理为单个 `chart.svg`；其他名称的报告在各自发布时更新。旧 Summary 的图片仍可通过原提交 SHA 访问。当前目录的 SVG 数量不再随运行次数增加，Git 历史仍保留旧版本，因此仓库历史体积仍会增长。
 
 启用报告分支需为 workflow 设置 `contents: write`，使用 Actions 自带的 `GITHUB_TOKEN`，无需配置额外 Secret。`pull_request` 事件默认只读取、复用已经发布的相同图表，不写入报告分支；缺少对应图表时，Summary 明确提示并保留 Artifact 入口。
 
