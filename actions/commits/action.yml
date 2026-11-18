@@ -1,5 +1,5 @@
 name: Commit contribution report
-description: 统计本地 Git 全历史，通过报告分支在 Job Summary 内嵌原版 SVG，并上传完整报告，无需额外 Token。
+description: 统计本地 Git 全历史，通过报告分支在 Job Summary 内嵌原版 SVG，可选上传完整报告，无需额外 Token。
 inputs:
   path:
     description: 已 checkout 的目标 Git 仓库路径，相对于 github.workspace。
@@ -14,7 +14,7 @@ inputs:
     description: 是否生成原版贡献者卡片和按周面积图 SVG，并在 Job Summary 提供原图入口。
     default: 'true'
   report-branch:
-    description: '保存完整报告并提供 Summary 内嵌图表的专用分支，例如 gh-report；需 contents: write，留空时只提供 Artifact 链接。'
+    description: '保存完整报告并提供 Summary 内嵌图表的专用分支，例如 gh-report；需 contents: write，留空时展示数据表格及上传成功的 Artifact 链接。'
     default: ''
   publish-on-pr:
     description: '是否允许 PR 创建和更新报告分支；仅在受信任且 GITHUB_TOKEN 已有 contents: write 的 PR 中启用。'
@@ -25,8 +25,11 @@ inputs:
   avatar-users:
     description: 每行一个 email=username 头像映射，仅图表模式生效。
     default: ''
+  upload-artifacts:
+    description: 是否上传完整报告和原图 Artifact；关闭后仍发布报告分支和 Job Summary。
+    default: 'true'
   artifact-name:
-    description: 完整报告 Artifact 名称，原图使用同名加 .svg；同一 workflow 中所有 Artifact 名称须唯一。
+    description: 报告目录和 Artifact 名称，原图使用同名加 .svg；同一 workflow 中所有 Artifact 名称须唯一。
     default: commit-report
 outputs:
   report-directory:
@@ -36,10 +39,10 @@ outputs:
     description: 本次统计固定的目标提交 SHA。
     value: ${{ steps.report.outputs.head-sha }}
   artifact-url:
-    description: 完整报告下载链接，访问者需要仓库读取权限且 Artifact 未过期。
+    description: 完整报告下载链接，关闭上传或上传失败时为空；访问者需要仓库读取权限且 Artifact 未过期。
     value: ${{ steps.artifact.outputs.artifact-url }}
   chart-url:
-    description: SVG 原图的 Artifact 链接；关闭图表时为空，访问权限和有效期与完整报告相同。
+    description: SVG 原图的 Artifact 链接；关闭图表、关闭上传、上传失败或跳过时为空，访问权限和有效期与完整报告相同。
     value: ${{ steps.chart.outputs.artifact-url }}
   chart-image-url:
     description: 固定提交 SHA 的 SVG 图片地址；未配置报告分支或发布失败时为空。
@@ -67,26 +70,9 @@ runs:
         GH_REPORT_CHART: ${{ inputs.chart }}
         GH_REPORT_AVATARS: ${{ inputs.github-avatars }}
         GH_REPORT_AVATAR_USERS: ${{ inputs.avatar-users }}
+        GH_REPORT_UPLOAD_ARTIFACTS: ${{ inputs.upload-artifacts }}
         GH_REPORT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: bash "$GH_REPORT_ACTION_PATH/run.sh"
-
-    - name: Upload complete report
-      id: artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ inputs.artifact-name }}
-        path: ${{ steps.report.outputs.directory }}/report/*
-        if-no-files-found: error
-
-    - name: Upload original SVG chart
-      id: chart
-      if: inputs.chart == 'true'
-      uses: actions/upload-artifact@v7
-      with:
-        path: ${{ steps.report.outputs.chart-file }}
-        archive: false
-        include-hidden-files: true
-        if-no-files-found: error
 
     - name: Publish complete report to branch
       id: publish-report
@@ -103,14 +89,38 @@ runs:
         GH_REPORT_GITHUB_TOKEN: ${{ github.token }}
       run: bash "$GH_REPORT_ACTION_PATH/publish-report.sh"
 
+    - name: Upload complete report
+      id: artifact
+      if: inputs.upload-artifacts == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.report.outputs.directory }}/report/*
+        if-no-files-found: error
+
+    - name: Upload original SVG chart
+      id: chart
+      if: inputs.upload-artifacts == 'true' && inputs.chart == 'true' && steps.artifact.outcome == 'success'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        path: ${{ steps.report.outputs.chart-file }}
+        archive: false
+        include-hidden-files: true
+        if-no-files-found: error
+
     - name: Publish Job Summary
+      if: ${{ !cancelled() && steps.report.outcome == 'success' }}
       shell: bash
       env:
         GH_REPORT_ACTION_PATH: ${{ github.action_path }}
         GH_REPORT_DIRECTORY: ${{ steps.report.outputs.directory }}
         GH_REPORT_HEAD_SHA: ${{ steps.report.outputs.head-sha }}
         GH_REPORT_ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        GH_REPORT_ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
         GH_REPORT_CHART_URL: ${{ steps.chart.outputs.artifact-url }}
+        GH_REPORT_CHART_OUTCOME: ${{ steps.chart.outcome }}
         GH_REPORT_CHART_IMAGE_URL: ${{ steps.publish-report.outputs.chart-image-url }}
         GH_REPORT_CHART_PUBLISH_OUTCOME: ${{ steps.publish-report.outcome }}
         GH_REPORT_PUBLISHED_REPORT_URL: ${{ steps.publish-report.outputs.report-url }}

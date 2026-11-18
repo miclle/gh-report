@@ -30,3 +30,18 @@ jobs:
         with:
           github-avatars: 'false'
           report-branch: gh-report
+      - name: Exercise commits Action without artifacts
+        id: without-artifacts
+        uses: ./actions/commits
+        with:
+          chart: 'false'
+          upload-artifacts: 'false'
+      - name: Verify outputs without artifacts
+        env:
+          HEAD_SHA: ${{ steps.without-artifacts.outputs.head-sha }}
+          ARTIFACT_URL: ${{ steps.without-artifacts.outputs.artifact-url }}
+          CHART_URL: ${{ steps.without-artifacts.outputs.chart-url }}
+        run: |
+          test -n "$HEAD_SHA"
+          test -z "$ARTIFACT_URL"
+          test -z "$CHART_URL"

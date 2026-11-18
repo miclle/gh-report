@@ -94,7 +94,7 @@ Summary 通过固定提交 SHA 的仓库图片地址展示原版贡献者卡片�
 
 开启图表并成功发布报告分支时，保存固定文件 `reports/<artifact-name>/chart.svg`，供默认分支的 README 或 Contributing 引用最新图表。使用报告分支 URL 即可随发布自动更新，GitHub 图片缓存可能带来显示延迟；引用示例见 [Action 文档](../actions/commits/README.md#在-readme-或-contributing-中展示最新图表)。
 
-Action 同时保留独立 SVG 和完整报告的 Artifact 入口。PR 验证默认只复用已发布的相同图表；受信任且 Token 已有写权限的 PR 可设置 `publish-on-pr: 'true'`，由 Action 自动创建报告分支并发布完整报告。分支未配置、图表尚未发布或写入失败时，Summary 保留原图链接和数据表格。只需要 Artifact 入口时可省略 `report-branch`，继续使用 `contents: read`。
+Action 默认上传独立 SVG 和完整报告 Artifact，也可设置 `upload-artifacts: 'false'`，只通过报告分支保存完整报告并在 Summary 展示图表和数据。报告分支先于 Artifact 上传发布；上传失败只产生警告，Summary 继续展示统计结果和可用的报告链接。PR 验证默认只复用已发布的相同图表；受信任且 Token 已有写权限的 PR 可设置 `publish-on-pr: 'true'`，由 Action 自动创建报告分支并发布完整报告。分支未配置、图表尚未发布或写入失败时，Summary 保留数据表格及上传成功的 Artifact 链接。只需要 Artifact 入口时可省略 `report-branch`，继续使用 `contents: read`。
 
 `--summary-output summary.md` 从同一份采集结果额外生成纯 Markdown 数据表格，不重复扫描历史；Action 发布图表后再补入内嵌图片和后备链接。下载报告中的 `report.md` 继续通过相对路径引用同目录 SVG，默认展开原版贡献图表并收起数据表格。超过 Summary 大小预算时保留全量总计、图表及链接。
 

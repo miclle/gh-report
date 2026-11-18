@@ -248,3 +248,84 @@ func TestSummaryEmbedsPinnedSVGAndKeepsFallbacks(t *testing.T) {
 		}
 	}
 }
+
+func TestSummaryWithUnavailableArtifacts(t *testing.T) {
+	for _, test := range []struct {
+		name, artifactOutcome, chartOutcome string
+		published, artifactAvailable        bool
+	}{
+		{"disabled-with-branch", "skipped", "skipped", true, false},
+		{"quota-exceeded", "failure", "skipped", true, false},
+		{"chart-upload-failed", "success", "failure", true, true},
+		{"disabled-without-branch", "skipped", "skipped", false, false},
+		{"uploads-and-publication-failed", "failure", "skipped", false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, oversized := range []bool{false, true} {
+				env, _, directory := publisherFixture(t)
+				imageURL, reportURL := "", ""
+				if test.published {
+					imageURL = publishedURL(t, env)
+					for _, line := range strings.Split(readFile(t, env["GITHUB_OUTPUT"]), "\n") {
+						if value, ok := strings.CutPrefix(line, "report-url="); ok {
+							reportURL = value
+						}
+					}
+					if imageURL == "" || reportURL == "" {
+						t.Fatal("missing published report links")
+					}
+				}
+				if oversized {
+					writeFile(t, filepath.Join(directory, "report", "summary.md"), strings.Repeat("author ", 150000)+"\n| TOTAL | | 1 | 2 | 3 | 5 |\n")
+				}
+				summaryPath := filepath.Join(directory, "job-summary")
+				summaryEnv := map[string]string{
+					"GH_REPORT_DIRECTORY": directory, "GH_REPORT_HEAD_SHA": strings.Repeat("a", 40),
+					"GITHUB_STEP_SUMMARY":        summaryPath,
+					"GH_REPORT_ARTIFACT_OUTCOME": test.artifactOutcome, "GH_REPORT_CHART_OUTCOME": test.chartOutcome,
+					"GH_REPORT_CHART_IMAGE_URL": imageURL, "GH_REPORT_PUBLISHED_REPORT_URL": reportURL,
+				}
+				if test.artifactAvailable {
+					summaryEnv["GH_REPORT_ARTIFACT_URL"] = "https://github.com/example/repo/actions/runs/1/artifacts/2"
+				}
+				if test.name == "uploads-and-publication-failed" {
+					summaryEnv["GH_REPORT_CHART_PUBLISH_OUTCOME"] = "failure"
+				}
+				output, err := runScript(t, "summary.sh", summaryEnv)
+				if err != nil {
+					t.Fatalf("summary: %v\n%s", err, output)
+				}
+				summary := readFile(t, summaryPath)
+				if !strings.Contains(summary, "| TOTAL | | 1 | 2 | 3 | 5 |") || len(summary) >= 1000000 {
+					t.Fatal("summary must preserve totals within the size budget")
+				}
+				if test.published && (!strings.Contains(summary, "![贡献者提交统计](<"+imageURL+">)") || !strings.Contains(summary, reportURL)) {
+					t.Fatal("missing published chart or report when artifacts are unavailable")
+				}
+				if strings.Contains(summary, "[下载完整报告") != test.artifactAvailable || strings.Contains(summary, "]()") {
+					t.Fatal("summary must only link to available downloads")
+				}
+				failed := test.artifactOutcome == "failure" || test.chartOutcome == "failure"
+				if strings.Contains(summary, "Artifact 上传未完成") != failed || strings.Contains(string(output), "::warning::") != failed {
+					t.Fatal("upload failures must produce a warning without treating disabled uploads as failures")
+				}
+				if test.name == "uploads-and-publication-failed" && !strings.Contains(summary, "未能发布分支报告") {
+					t.Fatal("publication failure must remain visible when uploads also fail")
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidUploadArtifactsPublishesNoOutputs(t *testing.T) {
+	directory := t.TempDir()
+	outputPath := filepath.Join(directory, "outputs")
+	writeFile(t, outputPath, "")
+	output, err := runScript(t, "run.sh", map[string]string{
+		"GITHUB_WORKSPACE": directory, "RUNNER_TEMP": directory, "GITHUB_OUTPUT": outputPath,
+		"GH_REPORT_UPLOAD_ARTIFACTS": "yes",
+	})
+	if err == nil || !strings.Contains(string(output), "upload-artifacts") || readFile(t, outputPath) != "" {
+		t.Fatalf("invalid upload option accepted: %v\n%s", err, output)
+	}
+}

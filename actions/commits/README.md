@@ -1,6 +1,6 @@
 # 在 GitHub Actions 中展示提交统计
 
-此 Composite Action 从自身源码构建 `gh-report`，读取调用仓库的完整 Git 历史，将完整 Markdown 和配套 SVG 保存到仓库的报告分支，在 workflow 的 Job Summary 内嵌贡献者卡片和逐周面积图，并上传 Markdown 报告和配套 SVG。无需对象存储、图床或额外 PAT，统计本身不调用 GitHub API。
+此 Composite Action 从自身源码构建 `gh-report`，读取调用仓库的完整 Git 历史，将完整 Markdown 和配套 SVG 保存到仓库的报告分支，在 workflow 的 Job Summary 内嵌贡献者卡片和逐周面积图，可选上传 Markdown 报告和配套 SVG。无需对象存储、图床或额外 PAT，统计本身不调用 GitHub API。
 
 ## 接入
 
@@ -49,7 +49,8 @@ jobs:
 | `publish-on-pr` | `'false'` | 设为 `'true'` 允许 PR 自动创建和更新报告分支；要求该 PR 的 `GITHUB_TOKEN` 实际具有 `contents: write` |
 | `github-avatars` | `'true'` | 图表是否直接下载并嵌入 GitHub 头像；设为 `'false'` 可关闭，下载失败使用首字母 |
 | `avatar-users` | 空 | 多行 `email=username` 头像映射；需要开启图表和头像 |
-| `artifact-name` | `commit-report` | 完整报告 Artifact 名称；原图使用该名称加 `.svg`。同一 workflow 中所有 Artifact 名称须唯一，例如包含 matrix 值；不能包含路径分隔符或换行 |
+| `upload-artifacts` | `'true'` | 是否上传完整报告和 SVG 原图；设为 `'false'` 时仍发布报告分支和 Job Summary |
+| `artifact-name` | `commit-report` | 报告分支中的目录名及 Artifact 名称；关闭上传后仍用于报告目录。原图使用该名称加 `.svg`。同一 workflow 中所有 Artifact 名称须唯一，例如包含 matrix 值；不能包含路径分隔符或换行 |
 
 ```yaml
 - uses: miclle/gh-report/actions/commits@main
@@ -64,17 +65,28 @@ jobs:
     artifact-name: target-commit-report
 ```
 
-`chart` 和 `github-avatars` 仅接受 `'true'` 或 `'false'`。默认不输出统计口径，统计范围和作者聚合规则沿用 [`commits`](../../docs/commits.md)。Action 固定 SHA 后只采集一次，Summary 和下载报告复用同一份数据。
+`chart`、`github-avatars` 和 `upload-artifacts` 仅接受 `'true'` 或 `'false'`。默认不输出统计口径，统计范围和作者聚合规则沿用 [`commits`](../../docs/commits.md)。Action 固定 SHA 后只采集一次，Summary 和下载报告复用同一份数据。
+
+已有报告分支保存完整报告的仓库，可关闭 Artifact 上传：
+
+```yaml
+- uses: miclle/gh-report/actions/commits@main
+  with:
+    report-branch: gh-report
+    upload-artifacts: 'false'
+```
+
+报告分支先于 Artifact 上传发布。存储配额耗尽或其他上传错误只产生警告，Summary 继续展示图表、数据表格和已发布的在线报告链接，job 不会因上传失败而失败。完整报告上传失败后跳过独立原图上传；完整报告上传成功而原图上传失败时，保留完整报告下载链接。关闭上传时，两个上传步骤均跳过，Summary 仅展示实际可用的链接。若同时省略 `report-branch`，Summary 只展示数据表格，完整文件可由后续步骤通过 `report-directory` 读取。
 
 ## 展示与下载
 
 - 图表使用原版 SVG：贡献者卡片、姓名 / 邮箱 / 头像、提交总数、增删行数和逐周面积图；所有卡片共享 UTC 时间范围及纵轴。
-- 配置 `report-branch: gh-report` 后，Job Summary 顶部直接内嵌 SVG 卡片和面积图，保留“查看 SVG 原图”后备入口，下方展示全部作者的数据表格，数值列右对齐，包含总计、统计 SHA 和采集时间。`chart: 'false'` 时只展示数据表格及完整报告下载链接。
-- SVG 原图以 `<artifact-name>.svg` 单独上传，使用 `archive: false`，无需下载 ZIP 后解压；它与完整报告中的 SVG 内容完全相同。
+- 配置 `report-branch: gh-report` 并成功发布图表后，Job Summary 顶部直接内嵌 SVG 卡片和面积图，下方展示全部作者的数据表格，数值列右对齐，包含总计、统计 SHA 和采集时间。原图上传成功时还提供“查看 SVG 原图”入口；`chart: 'false'` 时展示数据表格及可用的完整报告链接。
+- 开启上传时，SVG 原图以 `<artifact-name>.svg` 单独上传，使用 `archive: false`，无需下载 ZIP 后解压；它与完整报告中的 SVG 内容完全相同。
 - 完整报告 Artifact 包含 `summary.md`、`report.md`，图表开启时另含 `report-<内容指纹>.svg`。下载解压后通过支持 Markdown 相对图片的查看器打开 `report.md`；提交到 GitHub 展示时需同时保留 SVG。
 - Summary 使用 `https://github.com/<owner>/<repo>/raw/<commit-sha>/reports/<artifact-name>/chart.svg` 作为图片地址，不使用内联 SVG、base64 或短期签名地址。图片仍是同一份原版 SVG，不另外生成柱状图。私有仓库的图片需要浏览器具有相应的 GitHub 登录权限。
 - 超过 Summary 大小预算时仅展示全量总计，同时保留内嵌图表、原图和完整报告链接；不会将部分作者的计数作为全量结果。
-- 两个 Artifact 均继承仓库访问控制和默认保留期；访问者需要登录并具有仓库读取权限，过期后链接失效。报告分支中的文件遵循仓库访问权限，不会随 Artifact 过期而删除。
+- 开启上传且成功时，两个 Artifact 均继承仓库访问控制和默认保留期；访问者需要登录并具有仓库读取权限，过期后链接失效。报告分支中的文件遵循仓库访问权限，不会随 Artifact 过期而删除。
 - `reports/<artifact-name>/README.md` 在 GitHub 分支目录中直接展示完整报告，旁边保留原始 `report.md`、`summary.md` 和配套 SVG。Summary 的“在线查看完整报告”链接固定到本次发布的提交。
 
 ### 在 README 或 Contributing 中展示最新图表
@@ -101,7 +113,7 @@ jobs:
 
 需要在 PR 阶段直接发布时，可显式设置 `publish-on-pr: 'true'`。Action 会在首次执行时自动创建报告分支，保存完整报告并在本次 Summary 内嵌 SVG，无需先合并或手工初始化。仅在受信任且 Token 实际具有写权限的 PR 中启用；该选项不会提升 Token 权限，普通 fork PR 的只读 Token 仍无法发布。建议固定 Action 的完整提交 SHA，并 checkout 目标仓库的默认分支统计。后续运行继续追加报告提交，不覆盖或强推历史。
 
-分支权限不足、规则限制或发布失败时，统计和 Artifact 仍保留，Summary 提示使用原图链接。若不需要内嵌图片，可省略 `report-branch` 并保留 `contents: read`。
+分支权限不足、规则限制或发布失败时，Summary 显示发布失败提示和统计表格，并保留上传成功的 Artifact 链接。若不需要内嵌图片，可省略 `report-branch` 并保留 `contents: read`。
 
 ## 输出
 
@@ -109,8 +121,8 @@ jobs:
 | :--- | :--- |
 | `report-directory` | runner 上的报告目录，供后续步骤使用 |
 | `head-sha` | 本次统计固定的 SHA |
-| `artifact-url` | 完整报告的 Artifact 下载链接 |
-| `chart-url` | SVG 原图的 Artifact 链接；关闭图表时为空 |
+| `artifact-url` | 完整报告的 Artifact 下载链接；关闭上传或上传失败时为空 |
+| `chart-url` | SVG 原图的 Artifact 链接；关闭图表、关闭上传、上传失败或跳过时为空 |
 | `chart-image-url` | 固定提交 SHA 的内嵌 SVG 图片地址；未配置或发布失败时为空 |
 | `report-url` | 固定提交 SHA 的完整报告在线查看地址；未发布时为空 |
 

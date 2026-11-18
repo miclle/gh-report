@@ -8,15 +8,16 @@ set -euo pipefail
 
 chart="${GH_REPORT_CHART:-true}"
 avatars="${GH_REPORT_AVATARS:-true}"
+upload_artifacts="${GH_REPORT_UPLOAD_ARTIFACTS:-true}"
 artifact_name="${GH_REPORT_ARTIFACT_NAME:-commit-report}"
 # 原图以独立文件上传，名称必须是单个文件名，不能越过临时目录。
 case "$artifact_name" in
   */*|*\\*|*$'\n'*|*$'\r'*) echo 'artifact-name 不能包含路径分隔符或换行。' >&2; exit 1 ;;
 esac
-for value in "$chart" "$avatars"; do
+for value in "$chart" "$avatars" "$upload_artifacts"; do
   case "$value" in
     true|false) ;;
-    *) echo 'chart 和 github-avatars 只能为 true 或 false。' >&2; exit 1 ;;
+    *) echo 'chart、github-avatars 和 upload-artifacts 只能为 true 或 false。' >&2; exit 1 ;;
   esac
 done
 
